@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================
+   OneAI – Milky White Theme
+   ========================= */
+
+:root{
+  color-scheme: light;
+
+  --bg: #f5f4f1;          /* 奶白主背景 */
+  --surface: #ffffff;     /* 卡片纯白 */
+  --bgSoft: #eceae5;
+
+  --text: #111111;
+  --text2: rgba(0,0,0,0.65);
+  --text3: rgba(0,0,0,0.45);
+
+  --border: rgba(0,0,0,0.08);
+  --border2: rgba(0,0,0,0.15);
+
+  --black: #111111;
+  --accent: #10a37f;
+}
+
+html, body{
+  margin:0;
+  padding:0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+*{
+  box-sizing: border-box;
+}
+
+a{
+  text-decoration:none;
+  color: inherit;
+}
