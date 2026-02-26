@@ -347,7 +347,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
             match.task === "waoc_brain"
               ? { question: raw, lang: ctx.input.lang ?? "en" }
               : { message: raw, lang: ctx.input.lang ?? "en" },
-            { templateVersion: 1 }
+            { templateVersion:  4}
           );
 
           if (r?.success) {
