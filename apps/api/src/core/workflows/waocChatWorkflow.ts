@@ -251,11 +251,17 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
       task: "waoc_chat",
       templateVersion: 4, // ✅ V4
       variables: (input) => ({
-        message: input.message,
-        context: input.context ?? "general",
-        lang: input.lang ?? "en",
-        emotionHint: input.emotionHint ?? "",
-      }),
+      message: input.message,
+      context: input.context ?? "general",
+      lang: input.lang ?? "en",
+      emotionHint: input.emotionHint ?? "",
+
+      websiteUrl: process.env.WEBSITE_URL || process.env.WAOC_SITE_URL || "",
+      tgUrl: process.env.TG_URL || process.env.WAOC_COMMUNITY_URL || "",
+      oneMissionUrl: process.env.ONE_MISSION_URL || "",
+      oneFieldUrl: process.env.ONE_FIELD_URL || "",
+      meditationUrl: process.env.MEDITATION_URL || ""
+     }),
     }),
 
     generateLLMStep<WaocChatInput, WaocChatData>(),
