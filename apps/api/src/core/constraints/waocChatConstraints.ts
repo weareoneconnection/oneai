@@ -1,62 +1,166 @@
 // src/core/constraints/waocChatConstraints.ts
+// WAOC Identity Enforcement 2.0 (Final Usable)
+// Goal: enforce acronym safety WITHOUT forcing "WAOC = We Are One Connection" in every reply.
+// - Only require the phrase when the USER is explicitly asking the acronym meaning.
+// - Still block invalid expansions anywhere in the reply.
+// - Still keep Truth Gate rules.
+// - Adds suggestedAction enum validation (avoid UI button conflict / long link spam).
+// - TruthGate trigger checks BOTH userMessage + reply (more reliable).
+// - Optional: lightweight auto-fix with lang-aware prepend.
+
+export type WaocSuggestedAction = "none" | "/links";
 
 export type WaocChatData = {
   reply: string;
-  suggestedAction?: string;
+  suggestedAction?: WaocSuggestedAction | string; // keep compatibility, but constraints will enforce enum
+};
+
+/** If you can, pass userMessage + lang from runtime. */
+export type WaocChatCheckInput = {
+  data: WaocChatData;
+  userMessage?: string; // ✅ check user's intent, not assistant reply
+  lang?: "en" | "zh";   // ✅ optional for auto-fix / language-aware prepend
 };
 
 function norm(s: any) {
   return String(s ?? "").trim();
 }
-
 function lower(s: any) {
   return norm(s).toLowerCase();
 }
 
-/**
- * 是否属于“需要外部验证”的问题
- * 不再一个个加 intent，而是统一规则
- */
-function needsVerification(replyLower: string) {
-  return /news|latest|update|updates|today|now|current|price|valuation|market|pump|dump|chart|contract|address|\bca\b|verify|official|scam|真假|最新|今天|现在|新闻|更新|价格|估值|市值|行情|合约|地址|验证|防骗/.test(
-    replyLower
-  );
+/** ---------------------------------------
+ *  Meaning intent detection (USER SIDE)
+ *  ------------------------------------- */
+function userAsksAcronymMeaning(userLower: string) {
+  // Strong signals only. Avoid "what is WAOC?" being treated as acronym meaning.
+  const en =
+    /\bstands\s+for\b|\bacronym\b|\bmeaning\b|\bfull\s+form\b|\bwhat\s+does\s+waoc\s+stand\s+for\b/;
+  const zh = /全称|缩写|代表什么|什么意思|含义|展开/;
+
+  const mentionsWAOC = /\bwaoc\b/.test(userLower) || userLower.includes("waoc");
+  if (!mentionsWAOC) return false;
+
+  const asksMeaning = en.test(userLower) || zh.test(userLower);
+  const directZh = /waoc.*(全称|缩写|代表什么|什么意思|含义|展开)/.test(userLower);
+
+  return asksMeaning || directZh;
 }
 
-/**
- * 是否包含“我无法验证/不会乱编”的声明
- */
+/** ---------------------------------------
+ *  Expansion safety: forbid wrong expansions anywhere
+ *  ------------------------------------- */
+const MUST_PHRASE = "we are one connection"; // required only when user asks meaning
+
+const BANNED_ACRONYMS = [
+  "we are one community",
+  "web of autonomous",
+  "autonomous communities",
+  "one community",
+  "web of all communities",
+  "web of all community",
+];
+
+/** Detect wrong expansion patterns (also catches “WAOC = ...” forms) */
+function containsInvalidExpansion(replyLower: string) {
+  if (BANNED_ACRONYMS.some((s) => replyLower.includes(s))) return true;
+
+  // Generic pattern: if assistant expands WAOC to something else explicitly
+  // Example: "WAOC = Web of ..." / "WAOC stands for Web of ..."
+  const explicitBad =
+    /waoc\s*(=|stands\s+for)\s*(?!we\s+are\s+one\s+connection)/.test(replyLower);
+
+  return explicitBad;
+}
+
+/** ---------------------------------------
+ *  Truth gate helpers
+ *  ------------------------------------- */
+function needsVerification(textLower: string) {
+  return /news|latest|update|updates|today|now|current|price|valuation|market|pump|dump|chart|contract|address|\bca\b|verify|official|scam|真假|最新|今天|现在|新闻|更新|价格|估值|市值|行情|合约|地址|验证|防骗/.test(
+    textLower
+  );
+}
 function hasDisclosure(replyLower: string) {
   return /won't make (it|things) up|i can’t verify|i cannot verify|i don't have reliable access|can’t reliably know|i won't guess|不乱编|不会乱编|无法验证|我没法验证|不会猜|不猜/.test(
     replyLower
   );
 }
-
-/**
- * 是否包含“具体下一步”
- */
 function hasConcreteNextStep(replyLower: string) {
-  return /\/report|pinned|pin|official|website|x\.com|telegram|join|link|官网|置顶|官方|入口|链接|频道|公告|\/rank|\/mission/.test(
+  return /\/report|pinned|pin|official|website|x\.com|telegram|join|link|官网|置顶|官方|入口|链接|频道|公告|\/rank|\/mission|\/links|\/website/.test(
     replyLower
   );
 }
-
-/**
- * 是否属于 PR 空话
- */
 function containsFluff(replyLower: string) {
   return /stay tuned|exciting developments|we're continuously building|keep the community engaged|it's important to stay informed|consider sharing|thriving|interconnected civilization|请关注官方渠道|敬请期待|持续建设|激动人心|保持关注/.test(
     replyLower
   );
 }
 
-export function checkWaocChatConstraints(data: WaocChatData) {
+/** ---------------------------------------
+ *  suggestedAction validation
+ *  ------------------------------------- */
+function isValidSuggestedAction(x: any): x is WaocSuggestedAction | undefined {
+  return x === undefined || x === "none" || x === "/links";
+}
+
+/** ---------------------------------------
+ *  Optional: auto-fix (lightweight)
+ *  - Use only if you want to rewrite output before sending.
+ *  - Keeps tone: short, calm, no hype.
+ *  ------------------------------------- */
+export function waocIdentityAutoFix(args: {
+  reply: string;
+  userMessage?: string;
+  lang?: "en" | "zh";
+}) {
+  let r = norm(args.reply);
+  const rLower = lower(r);
+  const uLower = lower(args.userMessage || "");
+  const asksMeaning = userAsksAcronymMeaning(uLower);
+
+  const prefix =
+    args.lang === "zh"
+      ? "WAOC = We Are One Connection。\n"
+      : "WAOC = We Are One Connection.\n";
+
+  // If user asks meaning but assistant didn't include the must phrase, prepend once.
+  if (asksMeaning && !rLower.includes(MUST_PHRASE)) {
+    r = `${prefix}${r}`;
+  }
+
+  // If assistant contains invalid expansion, hard-rewrite that part.
+  // Minimal safe fix: replace any "WAOC = ..." or "WAOC stands for ..." with correct one.
+  if (containsInvalidExpansion(lower(r))) {
+    r = r.replace(
+      /WAOC\s*(=|stands\s+for)\s*[^.。\n]+/gi,
+      "WAOC = We Are One Connection"
+    );
+    // Also remove known banned phrases if still present
+    for (const bad of BANNED_ACRONYMS) {
+      const re = new RegExp(bad.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+      r = r.replace(re, "We Are One Connection");
+    }
+  }
+
+  return r.trim();
+}
+
+/** ---------------------------------------
+ *  Main constraints check (Final)
+ *  ------------------------------------- */
+export function checkWaocChatConstraints(input: WaocChatCheckInput) {
   const errors: string[] = [];
 
+  const data = input?.data;
   const reply = norm(data?.reply);
   if (!reply) errors.push("reply must be non-empty");
 
   const lowerReply = lower(reply);
+  const userLower = lower(input?.userMessage || "");
+
+  // ✅ USER-INTENT BASED meaning check
+  const asksMeaning = userAsksAcronymMeaning(userLower);
 
   /* -----------------------------
      1️⃣ 禁止机器人开场
@@ -78,25 +182,17 @@ export function checkWaocChatConstraints(data: WaocChatData) {
   }
 
   /* -----------------------------
-     2️⃣ WAOC 扩写必须唯一
+     2️⃣ WAOC Identity Enforcement 2.0
+     - Only require the must phrase when USER asks acronym meaning.
+     - Always ban invalid expansions anywhere.
   ----------------------------- */
-  const asksMeaning =
-    /waoc.*meaning|what.*waoc|stands for|acronym|全称|什么意思|含义|缩写|代表什么/.test(lowerReply);
-
-  const mustPhrase = "we are one connection";
-  if (asksMeaning && !lowerReply.includes(mustPhrase)) {
-    errors.push('Must explicitly state: "WAOC = We Are One Connection"');
+  if (asksMeaning && !lowerReply.includes(MUST_PHRASE)) {
+    errors.push(
+      'If user asks meaning, must include: "WAOC = We Are One Connection" (not necessarily every reply)'
+    );
   }
 
-  const bannedAcronyms = [
-    "we are one community",
-    "web of autonomous",
-    "autonomous communities",
-    "one community",
-    "web of all communities",     // ✅ NEW: screenshot bug
-    "web of all community",       // ✅ optional typo toleranc
-  ];
-  if (bannedAcronyms.some((s) => lowerReply.includes(s))) {
+  if (containsInvalidExpansion(lowerReply)) {
     errors.push("WAOC acronym expansion is invalid (do not redefine WAOC)");
   }
 
@@ -108,9 +204,13 @@ export function checkWaocChatConstraints(data: WaocChatData) {
   }
 
   /* -----------------------------
-     4️⃣ Truth Gate（一次性解决 news/price 等问题）
+     4️⃣ Truth Gate（reliable trigger）
+     - Trigger if either USER or REPLY indicates verification topic
   ----------------------------- */
-  if (needsVerification(lowerReply)) {
+  const verificationTopic =
+    needsVerification(userLower) || needsVerification(lowerReply);
+
+  if (verificationTopic) {
     if (!hasDisclosure(lowerReply)) {
       errors.push(
         "verification-type reply must disclose uncertainty (cannot verify / won't guess)"
@@ -124,9 +224,16 @@ export function checkWaocChatConstraints(data: WaocChatData) {
   }
 
   /* -----------------------------
-     5️⃣ suggestedAction 长度限制
+     5️⃣ suggestedAction enum
   ----------------------------- */
-  if (data?.suggestedAction && data.suggestedAction.length > 200) {
+  if (!isValidSuggestedAction((data as any)?.suggestedAction)) {
+    errors.push('suggestedAction must be "none" or "/links"');
+  }
+
+  /* -----------------------------
+     6️⃣ suggestedAction length limit (legacy safeguard)
+  ----------------------------- */
+  if ((data as any)?.suggestedAction && String((data as any).suggestedAction).length > 200) {
     errors.push("suggestedAction too long (max 200 chars)");
   }
 
