@@ -425,7 +425,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
   steps: [
     preparePromptStep<WaocChatInput, WaocChatData>({
       task: "waoc_chat",
-      templateVersion: 9,
+      templateVersion: 4,
       variables: (input) => ({
         message: input.message,
         context: input.context ?? "general",
@@ -437,6 +437,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         oneMissionUrl: env("ONE_MISSION_URL"),
         oneFieldUrl: env("ONE_FIELD_URL"),
         meditationUrl: env("MEDITATION_URL"),
+        xUrl: env("X_URL") || env("WAOC_X_URL"),
       }),
     }),
 
@@ -499,7 +500,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
               : match.task === "waoc_narrative"
               ? { topic: raw, depth: "short", lang: ctx.input.lang ?? "en" }
               : { message: raw, lang: ctx.input.lang ?? "en" },
-            { templateVersion: 5 }
+            { templateVersion: 4 }
           );
 
           if (r?.success) {
