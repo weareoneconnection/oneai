@@ -63,17 +63,15 @@ function nonEmptyList(xs: Array<string | false | null | undefined>) {
 function looksLikeMeaningQuestion(msgLower: string) {
   return (
     // --- Explicit acronym queries ---
-    /\bwaoc\b.*(\bmeaning\b|\bmean\b|\bmeans\b|\bacronym\b|\bfull\s*form\b|\bexpand(ed)?\b|\bstands?\s+for\b|\bstanding\s+for\b)/.test(msgLower) ||
-
+    /\bwaoc\b.*(\bmeaning\b|\bmean\b|\bmeans\b|\bacronym\b|\bfull\s*form\b|\bexpand(ed)?\b|\bstands?\s+for\b|\bstanding\s+for\b)/.test(
+      msgLower
+    ) ||
     // --- What does WAOC mean / stand for ---
     /\bwhat\s+does\s+waoc\s+(mean|stand\s+for)\b/.test(msgLower) ||
-
     // --- What is WAOC / What's WAOC ---
     /\bwhat\s+(is|’s|'s)\s+waoc\b/.test(msgLower) ||
-
     // --- Short direct form: "waoc?" ---
     /^\s*waoc\s*\?\s*$/.test(msgLower) ||
-
     // --- Chinese ---
     /全称|什么意思|含义|缩写|代表什么|展开|啥意思/.test(msgLower)
   );
@@ -110,7 +108,7 @@ function quickAutoReply(args: {
   const { raw, msg, lang } = args;
 
   const WEBSITE_URL = env("WEBSITE_URL") || env("WAOC_SITE_URL");
-  const X_URL = env("X_URL");
+  const X_URL = env("X_URL") || env("WAOC_X_URL");
   const TG_URL = env("TG_URL") || env("WAOC_COMMUNITY_URL");
   const ONE_MISSION_URL = env("ONE_MISSION_URL");
   const ONE_FIELD_URL = env("ONE_FIELD_URL");
@@ -134,30 +132,32 @@ function quickAutoReply(args: {
 
   // --- WAOC meaning / stands for (deterministic) ---
   const asksMeaning = looksLikeMeaningQuestion(msg);
-  if (asksMeaning) {
-  const reply =
-    lang === "zh"
-      ? "WAOC = We Are One Connection。\n" +
-        "WAOC 是 Solana 上的 AI-Native Coordination Layer。\n" +
-        "由 $WAOC（We Are One Connection）驱动。\n" +
-        "链上身份与声誉基础设施。\n" +
-        "一个关于人类协作的长期实验。\n\n" +
-        "官方入口：\n" +
-        (links.length
-          ? links.map((x) => `- ${x}`).join("\n")
-          : "（暂未配置官方链接）")
-      : "WAOC = We Are One Connection.\n" +
-        "WAOC — AI-Native Coordination Layer on Solana.\n" +
-        "Powered by $WAOC (We Are One Connection).\n" +
-        "On-chain identity & reputation infrastructure.\n" +
-        "A long-term experiment in Human Coordination.\n\n" +
-        "Official entry points:\n" +
-        (links.length
-          ? links.map((x) => `- ${x}`).join("\n")
-          : "(official links not configured yet)");
 
-  return { reply, suggestedAction: links.length ? actionLinks : actionNone };
-}
+  if (asksMeaning) {
+    const reply =
+      lang === "zh"
+        ? "WAOC = We Are One Connection。\n" +
+          "WAOC 是 Solana 上的 AI-Native Coordination Layer。\n" +
+          "由 $WAOC（We Are One Connection）驱动。\n" +
+          "链上身份与声誉基础设施。\n" +
+          "一个关于人类协作的长期实验。\n\n" +
+          "官方入口：\n" +
+          (links.length
+            ? links.map((x) => `- ${x}`).join("\n")
+            : "（暂未配置官方链接）")
+        : "WAOC = We Are One Connection.\n" +
+          "WAOC — AI-Native Coordination Layer on Solana.\n" +
+          "Powered by $WAOC (We Are One Connection).\n" +
+          "On-chain identity & reputation infrastructure.\n" +
+          "A long-term experiment in Human Coordination.\n\n" +
+          "Official entry points:\n" +
+          (links.length
+            ? links.map((x) => `- ${x}`).join("\n")
+            : "(official links not configured yet)");
+
+    return { reply, suggestedAction: links.length ? actionLinks : actionNone };
+  }
+
   // --- Website / Links ---
   const asksLinks =
     msg === "website" ||
@@ -201,7 +201,7 @@ function quickAutoReply(args: {
             "WAOC 合约地址（官方配置）：\n" +
             lines.map((x) => `- ${x}`).join("\n") +
             "\n\n⚠️ 只以官方渠道为准，别信私聊。",
-          suggestedAction: actionLinks, // ✅ 仍给 /links：用于后续核验入口
+          suggestedAction: actionLinks,
         };
       }
       return {
@@ -249,7 +249,7 @@ function quickAutoReply(args: {
         lang === "zh"
           ? "One Mission 是 WAOC 的贡献引擎：完成任务 → 记分 → 上榜。用下方 Mission 按钮进入。"
           : "One Mission is WAOC’s contribution engine: complete tasks → earn points → climb the leaderboard. Use the Mission button below.",
-      suggestedAction: actionNone, // ✅ 不和按钮冲突
+      suggestedAction: actionNone,
     };
   }
 
@@ -278,14 +278,6 @@ function quickAutoReply(args: {
    Constraint Guard (never crash)
 ========================= */
 
-// ✅ applyConstraintsOrFallback — 极简三段式 Final Version
-// 目标：
-// 1) Identity/Expansion 安全壳（含 asksMeaning 必须句）
-// 2) Truth Gate（CA/price/news/listings/partnerships/verify）
-// 3) 最小通用 fallback（非教练式开场、非PR）
-//
-// 依赖：checkWaocChatConstraints / looksLikeMeaningQuestion / looksLikeCAQuestion / looksLikeNewsQuestion / env / norm / lower
-
 function applyConstraintsOrFallback(args: {
   data: WaocChatData;
   input: WaocChatInput;
@@ -293,7 +285,7 @@ function applyConstraintsOrFallback(args: {
   const data = args.data || { reply: "", suggestedAction: "none" };
   const input = args.input || ({} as any);
 
-  // ✅ pass userMessage for Identity Enforcement 2.0
+  // ✅ pass userMessage for Identity Enforcement 2.2
   const check = checkWaocChatConstraints({ data, userMessage: input.message });
   if (check.ok) return { ok: true, data };
 
@@ -337,7 +329,7 @@ function applyConstraintsOrFallback(args: {
     replyLower.includes("one community") ||
     /waoc\s*(=|stands\s+for)\s*(?!we\s+are\s+one\s+connection)/.test(replyLower);
 
-  if (asksMeaning || hasBadExpansion) {
+  if (asksMeaning) {
     const introEn = [
       "WAOC = We Are One Connection.",
       "WAOC — AI-Native Coordination Layer on Solana.",
@@ -348,10 +340,10 @@ function applyConstraintsOrFallback(args: {
 
     const introZh = [
       "WAOC = We Are One Connection。",
-      "WAOC —— Solana 上的 AI-Native 协调层。",
+      "WAOC 是 Solana 上的 AI-Native Coordination Layer。",
       "由 $WAOC（We Are One Connection）驱动。",
       "链上身份与声誉基础设施。",
-      "一个长期的人类协作实验。",
+      "一个关于人类协作的长期实验。",
     ].join("\n");
 
     const reply =
@@ -368,18 +360,38 @@ function applyConstraintsOrFallback(args: {
     if (c2.ok) return { ok: true, data: fixed };
   }
 
+  if (hasBadExpansion) {
+    const correctionEn =
+      "Correction: WAOC expands only as “We Are One Connection”.";
+    const correctionZh =
+      "更正：WAOC 的全称只有一个：We Are One Connection。";
+
+    const reply =
+      lang === "zh"
+        ? correctionZh + (linkLine ? `\n\n官方入口：\n${linkLine}\n（需要入口清单可用 /links）` : "")
+        : correctionEn + (linkLine ? `\n\nOfficial entry points:\n${linkLine}\n(Use /links for the entry list.)` : "");
+
+    const fixed: WaocChatData = {
+      reply,
+      suggestedAction: linkLine ? "/links" : "none",
+    };
+
+    const c2 = checkWaocChatConstraints({ data: fixed, userMessage: input.message });
+    if (c2.ok) return { ok: true, data: fixed };
+  }
+
   // ----------------------------
   // 2) Truth Gate (CA / price / news / listings / partnerships / verify)
   // ----------------------------
   const verificationLike =
     looksLikeNewsQuestion(msgLower) ||
     looksLikeCAQuestion(msgLower) ||
-    /price|valuation|market|chart|pump|dump|listing|partner|partnership|verify|scam|真假|最新|今天|现在|新闻|更新|价格|估值|市值|行情|上所|合作|验证|防骗/.test(
+    /price|valuation|market\s*(now|today|current)|chart|pump|dump|listing|partner|partnership|verify|official|scam|真假|最新|今天|现在|新闻|更新|价格|估值|市值|行情|上所|合作|验证|防骗/.test(
       msgLower
     );
 
   if (verificationLike) {
-    const reply =
+    const base =
       lang === "zh"
         ? [
             "这类信息（新闻/价格/CA/上所/合作）我在这里无法实时核验，也不会猜或乱编。",
@@ -390,8 +402,10 @@ function applyConstraintsOrFallback(args: {
             "Use pinned messages + official website/official X. For entry points, use /links.",
           ].join("\n");
 
+    const reply = linkLine ? `${base}\n\n${linkLine}` : base;
+
     const fixed: WaocChatData = {
-      reply: linkLine ? `${reply}\n\n${linkLine}` : reply,
+      reply,
       suggestedAction: linkLine ? "/links" : "none",
     };
 
@@ -399,40 +413,18 @@ function applyConstraintsOrFallback(args: {
     if (c2.ok) return { ok: true, data: fixed };
   }
 
-  // --- CA/price safety fallback ---
-  if (looksLikeCAQuestion(msgLower) || /price|估值|价格|多少钱|市值|行情/.test(msgLower)) {
-    const fixed: WaocChatData =
-      lang === "zh"
-        ? {
-            reply:
-              "这类信息（CA/价格/上所/合作）如果没出现在官方入口里，我不会乱写。\n" +
-              "请用置顶消息/官网/官方 X 核对。（需要入口可用 /links）",
-            suggestedAction: linkLine ? "/links" : "none",
-          }
-        : {
-            reply:
-              "For CA/price/listings/partnerships: if it’s not in official sources, I won’t guess.\n" +
-              "Verify via pinned message/website/official X. (Use /links for entry points.)",
-            suggestedAction: linkLine ? "/links" : "none",
-          };
-
-    const c2 = checkWaocChatConstraints({ data: fixed, userMessage: input.message });
-    if (c2.ok) return { ok: true, data: fixed };
-  }
-
-  // --- Generic safe fallback (non-coaching) ---
-  const fixed: WaocChatData =
+  // ----------------------------
+  // 3) Core fallback (AI coordination core tone)
+  // ----------------------------
+  const coreFallback =
     lang === "zh"
-      ? {
-          reply:
-            "我按 WAOC 语境给你可执行的路径：要入口发 /links；要执行（推文/叙事/任务）直接发关键词：tweet / narrative / mission。",
-          suggestedAction: "none",
-        }
-      : {
-          reply:
-            "Practical path: for entry points send /links; for execution (tweet/narrative/mission) just send the keyword: tweet / narrative / mission.",
-          suggestedAction: "none",
-        };
+      ? "我可以把你的请求路由成可执行动作：tweet / narrative / mission。\n你想“生成什么”还是“推进什么”？用一句话说目标。"
+      : "I can route this into an executable action: tweet / narrative / mission.\nAre we generating something, or pushing something? Say the goal in one line.";
+
+  const fixed: WaocChatData = {
+    reply: coreFallback,
+    suggestedAction: "none",
+  };
 
   const c2 = checkWaocChatConstraints({ data: fixed, userMessage: input.message });
   if (c2.ok) return { ok: true, data: fixed };
@@ -477,7 +469,6 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
     validateSchemaStep<WaocChatInput, WaocChatData>(waocChatValidator),
 
     refineJsonStep<WaocChatInput, WaocChatData>({
-      // ✅ Identity Enforcement 2.0: pass userMessage into constraints
       check: (ctx) =>
         checkWaocChatConstraints({
           data: ctx.data as any,
@@ -515,11 +506,11 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
 
       // ✅ (3) Router: forward certain intents to other tasks/templates
       const routes: Array<{ hit: (s: string) => boolean; task: string }> = [
-      { hit: (s) => /估值|value|valuation/.test(s), task: "waoc_brain" },
-      { hit: (s) => /叙事|宣言|理念|哲学|philosophy|manifesto|narrative|vision/.test(s), task: "waoc_narrative" },
-      { hit: (s) => /mission|任务|排行榜|leaderboard|rank/.test(s), task: "mission" },
-      { hit: (s) => /tweet|推文|发推|x\.com|thread/.test(s), task: "tweet" },
-     ];
+        { hit: (s) => /估值|value|valuation/.test(s), task: "waoc_brain" },
+        { hit: (s) => /叙事|宣言|理念|哲学|philosophy|manifesto|narrative|vision/.test(s), task: "waoc_narrative" },
+        { hit: (s) => /mission|任务|排行榜|leaderboard|rank/.test(s), task: "mission" },
+        { hit: (s) => /tweet|推文|发推|x\.com|thread/.test(s), task: "tweet" },
+      ];
 
       const match = routes.find((r) => r.hit(msg));
       if (match) {
@@ -546,12 +537,9 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
               const next: WaocChatData = {
                 ...ctx.data,
                 reply: answer,
-                // ✅ 默认不塞 action，避免冲突
                 suggestedAction: ctx.data?.suggestedAction ?? "none",
               };
 
-              // ✅ 如果子任务提供 links，仍然不要塞到 suggestedAction（避免长串/冲突）
-              // 让 reply 自己包含必要链接/路径；必要时用 /links
               if (Array.isArray(r.data?.links) && r.data.links.length) {
                 next.reply += "\n\n(Need official entry points? Use /links.)";
                 next.suggestedAction = "/links";
