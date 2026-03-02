@@ -6,7 +6,7 @@ import { authOptions } from "@/auth";
 type Json = Record<string, any>;
 
 function normalizeBase(raw?: string) {
-  const v = (raw || "http://127.0.0.1:4000").replace(/\/$/, "");
+  const v = (raw || "https://oneai-api-production.up.railway.app").replace(/\/$/, "");
   // ✅ 关键：强制 localhost 走 IPv4，避免 Node/Next 在某些环境解析到 ::1 导致拒绝连接
   return v.replace(/^http:\/\/localhost(?=:\d+|$)/, "http://127.0.0.1");
 }
