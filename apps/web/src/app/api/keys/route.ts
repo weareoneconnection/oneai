@@ -3,30 +3,60 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/auth";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 type Json = Record<string, any>;
 
 function normalizeBase(raw?: string) {
-  const v = (raw || "https://oneai-api-production.up.railway.app").replace(/\/$/, "");
-  // ✅ 关键：强制 localhost 走 IPv4，避免 Node/Next 在某些环境解析到 ::1 导致拒绝连接
-  return v.replace(/^http:\/\/localhost(?=:\d+|$)/, "http://127.0.0.1");
+  let v = String(raw || "https://oneai-api-production.up.railway.app").trim();
+  v = v.replace(/\/$/, "");
+
+  // ✅ localhost 统一走 IPv4，避免某些环境解析到 ::1
+  v = v.replace(/^http:\/\/localhost(?=:\d+|$)/, "http://127.0.0.1");
+  v = v.replace(/^http:\/\/\[::1\](?=:\d+|$)/, "http://127.0.0.1");
+
+  return v;
 }
 
 function env() {
-  const base = normalizeBase(process.env.ONEAI_API_BASE_URL || "http://127.0.0.1:4000");
-  const key = process.env.ONEAI_ADMIN_API_KEY || "";
+  // ✅ 线上默认永远指向 production API（除非你显式配置）
+  const base = normalizeBase(
+    process.env.ONEAI_API_BASE_URL || process.env.ONEAI_BASE_URL || "https://oneai-api-production.up.railway.app"
+  );
+
+  const key = String(process.env.ONEAI_ADMIN_API_KEY || "");
   if (!key) {
-    return { ok: false as const, status: 500, error: "ONEAI_ADMIN_API_KEY missing" };
+    return {
+      ok: false as const,
+      status: 500,
+      error: "ONEAI_ADMIN_API_KEY missing",
+      hint: "Set ONEAI_ADMIN_API_KEY in Vercel (Production) and redeploy.",
+      base,
+    };
   }
+
   return { ok: true as const, base, key };
 }
 
 async function readJsonSafe(res: Response) {
-  const text = await res.text();
-  if (!text) return { ok: true as const, json: null as any, text: "" };
+  const ct = res.headers.get("content-type") || "";
+  const text = await res.text().catch(() => "");
+  const trimmed = text?.trim?.() || "";
+
+  // 空 body 也算正常（由上层决定怎么处理）
+  if (!trimmed) return { ok: true as const, json: null as any, text: "" };
+
+  // 优先按 JSON 解析
+  const looksJson = ct.includes("application/json") || trimmed.startsWith("{") || trimmed.startsWith("[");
+  if (!looksJson) {
+    return { ok: false as const, json: null as any, text: trimmed };
+  }
+
   try {
-    return { ok: true as const, json: JSON.parse(text), text };
+    return { ok: true as const, json: JSON.parse(trimmed), text: trimmed };
   } catch {
-    return { ok: false as const, json: null as any, text };
+    return { ok: false as const, json: null as any, text: trimmed };
   }
 }
 
@@ -34,6 +64,7 @@ async function fetchWithTimeout(url: string, init: RequestInit & { timeoutMs?: n
   const timeoutMs = init.timeoutMs ?? 10_000;
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
     const { timeoutMs: _, ...rest } = init;
     return await fetch(url, { ...rest, signal: controller.signal });
@@ -57,12 +88,17 @@ async function requireEmail() {
   return { ok: true as const, email };
 }
 
+function safeRaw(raw: string, max = 1200) {
+  const s = String(raw || "");
+  return s.length > max ? s.slice(0, max) + "…(truncated)" : s;
+}
+
 export async function GET() {
   const auth = await requireEmail();
   if (!auth.ok) return fail({ error: auth.error }, auth.status);
 
   const e = env();
-  if (!e.ok) return fail({ error: e.error }, e.status);
+  if (!e.ok) return fail({ error: e.error, hint: e.hint, base: e.base }, e.status);
 
   const url = `${e.base}/v1/admin/keys?userEmail=${encodeURIComponent(auth.email)}`;
 
@@ -81,21 +117,21 @@ export async function GET() {
           url,
           base: e.base,
           status: r.status,
-          raw: parsed.text,
+          raw: safeRaw(parsed.text),
         },
         r.status || 502
       );
     }
 
-    // 透传后端结构
     return ok(parsed.json ?? { success: false, error: "empty_response", url }, r.status);
   } catch (err: any) {
+    const isAbort = err?.name === "AbortError";
     return fail(
       {
         error: "fetch_failed",
         url,
         base: e.base,
-        message: err?.name === "AbortError" ? "timeout" : err?.message,
+        message: isAbort ? "timeout" : String(err?.message || err),
       },
       500
     );
@@ -107,10 +143,10 @@ export async function POST(req: Request) {
   if (!auth.ok) return fail({ error: auth.error }, auth.status);
 
   const e = env();
-  if (!e.ok) return fail({ error: e.error }, e.status);
+  if (!e.ok) return fail({ error: e.error, hint: e.hint, base: e.base }, e.status);
 
   const body = (await req.json().catch(() => ({}))) as { name?: string };
-  const name = (body?.name || "default").toString().slice(0, 64);
+  const name = (body?.name || "default").toString().trim().slice(0, 64) || "default";
 
   const url = `${e.base}/v1/admin/keys`;
 
@@ -128,15 +164,27 @@ export async function POST(req: Request) {
     const parsed = await readJsonSafe(r);
     if (!parsed.ok) {
       return fail(
-        { error: "bad_json_from_api", url, base: e.base, status: r.status, raw: parsed.text },
+        {
+          error: "bad_json_from_api",
+          url,
+          base: e.base,
+          status: r.status,
+          raw: safeRaw(parsed.text),
+        },
         r.status || 502
       );
     }
 
     return ok(parsed.json ?? { success: false, error: "empty_response", url }, r.status);
   } catch (err: any) {
+    const isAbort = err?.name === "AbortError";
     return fail(
-      { error: "fetch_failed", url, base: e.base, message: err?.name === "AbortError" ? "timeout" : err?.message },
+      {
+        error: "fetch_failed",
+        url,
+        base: e.base,
+        message: isAbort ? "timeout" : String(err?.message || err),
+      },
       500
     );
   }
@@ -147,7 +195,7 @@ export async function DELETE(req: Request) {
   if (!auth.ok) return fail({ error: auth.error }, auth.status);
 
   const e = env();
-  if (!e.ok) return fail({ error: e.error }, e.status);
+  if (!e.ok) return fail({ error: e.error, hint: e.hint, base: e.base }, e.status);
 
   const body = (await req.json().catch(() => ({}))) as { id?: string };
   const id = (body?.id || "").toString().trim();
@@ -169,15 +217,27 @@ export async function DELETE(req: Request) {
     const parsed = await readJsonSafe(r);
     if (!parsed.ok) {
       return fail(
-        { error: "bad_json_from_api", url, base: e.base, status: r.status, raw: parsed.text },
+        {
+          error: "bad_json_from_api",
+          url,
+          base: e.base,
+          status: r.status,
+          raw: safeRaw(parsed.text),
+        },
         r.status || 502
       );
     }
 
     return ok(parsed.json ?? { success: false, error: "empty_response", url }, r.status);
   } catch (err: any) {
+    const isAbort = err?.name === "AbortError";
     return fail(
-      { error: "fetch_failed", url, base: e.base, message: err?.name === "AbortError" ? "timeout" : err?.message },
+      {
+        error: "fetch_failed",
+        url,
+        base: e.base,
+        message: isAbort ? "timeout" : String(err?.message || err),
+      },
       500
     );
   }
