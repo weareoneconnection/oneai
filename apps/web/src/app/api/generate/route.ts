@@ -1,7 +1,8 @@
 // apps/web/src/app/api/generate/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
-const API_BASE = (process.env.ONEAI_API_BASE_URL || "http://127.0.0.1:4000").replace(/\/$/, "");
+const API_BASE_RAW = process.env.ONEAI_API_BASE_URL || "";
+const API_BASE = API_BASE_RAW.replace(/\/$/, "");
 const API_KEY = process.env.ONEAI_API_KEY || "";
 
 export async function POST(req: NextRequest) {
@@ -15,27 +16,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (!API_BASE) {
+      return NextResponse.json(
+        { success: false, error: "Missing ONEAI_API_BASE_URL on web server env" },
+        { status: 500 }
+      );
+    }
+
     const upstream = await fetch(`${API_BASE}/v1/generate`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         accept: "application/json",
-        "x-api-key": API_KEY, // ✅ only on server
+        "x-api-key": API_KEY,
       },
       body: JSON.stringify(body),
+      cache: "no-store",
     });
 
     const contentType = upstream.headers.get("content-type") || "application/json";
     const text = await upstream.text();
 
-    // pass-through status/body
     return new NextResponse(text, {
       status: upstream.status,
       headers: { "content-type": contentType },
     });
   } catch (err: any) {
     return NextResponse.json(
-      { success: false, error: err?.message || "Proxy error" },
+      {
+        success: false,
+        error: err?.message || "Proxy error",
+      },
       { status: 500 }
     );
   }
