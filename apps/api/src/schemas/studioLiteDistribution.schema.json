@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["content_loop", "distribution_plan", "sequencing_reason"],
+  "properties": {
+    "content_loop": { "type": "string", "minLength": 1 },
+    "distribution_plan": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["day", "slot", "content_type", "objective"],
+        "properties": {
+          "day": { "type": "number" },
+          "slot": { "type": "string", "enum": ["morning", "midday", "evening"] },
+          "content_type": { "type": "string", "enum": ["hook", "tweet", "thread", "reply", "debate", "cta"] },
+          "objective": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "sequencing_reason": { "type": "string", "minLength": 1 }
+  }
+}

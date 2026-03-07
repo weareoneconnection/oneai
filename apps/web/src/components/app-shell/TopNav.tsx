@@ -88,7 +88,7 @@ export function TopNav({ onMenuClick }: { onMenuClick?: () => void }) {
       <div className="flex items-center gap-1 shrink-0">
         {/* Desktop-only nav (avoid mobile overflow) */}
         <div className="hidden items-center gap-1 md:flex">
-          <NavLink href="/studio">Studio</NavLink>
+          <NavLink href="/studio">Studio/OS</NavLink>
           <NavLink href="/templates">Templates</NavLink>
           <NavLink href="/projects">Projects</NavLink>
           <NavLink href="/workflows">Workflows</NavLink>

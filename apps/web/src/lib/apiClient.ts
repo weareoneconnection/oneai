@@ -5,12 +5,14 @@
  * ✅ Supports:
  * - x-api-key auth (dev)
  * - HTML/non-JSON responses (wrong route / fallback)
- * - Unified error messages
+ * - Unified error messages (with debug payload)
  * - /v1/generate task-runner protocol: { type, input, options }
  *
- * ✅ OS upgrade:
- * - If workflowType is provided, it will be sent as `type` directly (no mapping to tweet/mission).
- * - If workflowType is NOT provided, it falls back to legacy StudioMode mapping (tweet/mission).
+ * ✅ Fixes included:
+ * - Studio Lite workflows supported: viral_hook / controversial_take / trend_hijack / scarcity_launch / build_public / offer_landing
+ * - Studio payload input is normalized (topic/context/extras/details/rewards/message)
+ * - safeFetchJSON throws rich errors with {status, url, raw, json, details}
+ * - Treats { success:false } as error (so UI can see real error content)
  */
 
 export type StudioMode = "tweet" | "mission" | "command" | "thread";
@@ -39,6 +41,12 @@ function normalizeLang(v: unknown, fallback: Lang = "en"): Lang {
   return s === "zh" ? "zh" : fallback;
 }
 
+/**
+ * Fetch JSON with robust diagnostics.
+ * - Attaches { status, url, raw, json, details } to thrown errors
+ * - Detects HTML fallbacks (wrong route/proxy)
+ * - Treats API { success:false } as failure
+ */
 async function safeFetchJSON(url: string, options?: RequestInit) {
   const res = await fetch(url, {
     cache: "no-store",
@@ -60,30 +68,63 @@ async function safeFetchJSON(url: string, options?: RequestInit) {
     raw.trim().startsWith("<!DOCTYPE html") ||
     raw.trim().startsWith("<html")
   ) {
-    throw new Error(
-      `API returned HTML instead of JSON. URL: ${url} Check NEXT_PUBLIC_API_BASE_URL`
+    const err = new Error(
+      `API returned HTML instead of JSON. URL: ${url} (check NEXT_PUBLIC_API_BASE_URL)`
     );
+    (err as any).status = res.status;
+    (err as any).url = url;
+    (err as any).raw = raw.slice(0, 1200);
+    throw err;
   }
 
   // ❌ Non JSON
   if (!contentType.includes("application/json")) {
-    throw new Error(
-      `API returned non-JSON. URL: ${url} Content-Type: ${contentType} Body: ${raw.slice(
-        0,
-        200
-      )}`
+    const err = new Error(
+      `API returned non-JSON. URL: ${url} Content-Type: ${contentType}`
     );
+    (err as any).status = res.status;
+    (err as any).url = url;
+    (err as any).raw = raw.slice(0, 1200);
+    throw err;
   }
 
   let data: any = null;
   try {
-    data = JSON.parse(raw);
+    data = raw ? JSON.parse(raw) : null;
   } catch {
-    throw new Error(`API JSON parse failed. URL: ${url} Body: ${raw.slice(0, 200)}`);
+    const err = new Error(`API JSON parse failed. URL: ${url}`);
+    (err as any).status = res.status;
+    (err as any).url = url;
+    (err as any).raw = raw.slice(0, 1200);
+    throw err;
   }
 
+  // ❌ HTTP fail
   if (!res.ok) {
-    throw new Error(data?.error || data?.message || `Request failed: ${res.status}`);
+    const msg = data?.error || data?.message || `Request failed: ${res.status}`;
+    const err = new Error(msg);
+    (err as any).status = res.status;
+    (err as any).url = url;
+    (err as any).json = data;
+    (err as any).details = data?.details ?? data?.error?.details ?? null; // ✅ PATCH
+    (err as any).raw = raw.slice(0, 1200);
+    throw err;
+  }
+
+  // ❌ API-level failure: { success:false }
+  if (data && data.success === false) {
+    const msg =
+      data?.error?.message ||
+      data?.error ||
+      data?.message ||
+      "Generate failed";
+    const err = new Error(msg);
+    (err as any).status = res.status;
+    (err as any).url = url;
+    (err as any).json = data;
+    (err as any).details = data?.details ?? data?.error?.details ?? null; // ✅ PATCH
+    (err as any).raw = raw.slice(0, 1200);
+    throw err;
   }
 
   return data;
@@ -95,26 +136,35 @@ async function safeFetchJSON(url: string, options?: RequestInit) {
 
 /**
  * IMPORTANT:
- * - mode: for UI OS mode (tweet/mission/command/thread)
- * - workflowType: actual /v1/generate task type (tweet/mission/waoc_chat/mission_os/...)
+ * - mode: UI OS mode (tweet/mission/command/thread)
+ * - workflowType: actual /v1/generate task type (tweet/mission/waoc_chat/mission_os/viral_hook/...)
  *
  * If workflowType is provided => it will be used as API `type` directly.
  */
 export type StudioGeneratePayload = {
   mode: StudioMode;
-  workflowType?: string; // ✅ OS: direct API workflow type, e.g. "waoc_chat"
+  workflowType?: string; // ✅ direct API workflow type
   projectSlug: string;
   language: Lang;
   tone: string;
   goal: string;
   constraints: string;
   input: {
-    topic: string;
-    details: string;
-    rewards: string;
-    // optional OS fields
-    message?: string; // for chat-like workflows
-    context?: string; // for chat-like workflows
+    // common
+    topic?: string;
+
+    // legacy studio
+    details?: string;
+    rewards?: string;
+
+    // lite studio
+    context?: string;
+    extras?: string;
+
+    // chat-like workflows
+    message?: string;
+
+    // optional meta
     projectVoice?: unknown;
     hint?: string;
   };
@@ -186,6 +236,19 @@ type IdentityInput = {
   lang?: Lang;
 };
 
+// --- Lite workflow input (recommended) ---
+type LiteStudioInput = {
+  topic: string;
+  context?: string;
+  extras?: string;
+  lang?: Lang;
+  tone?: string;
+  goal?: string;
+  constraints?: string;
+  projectSlug?: string;
+  mode?: StudioMode;
+};
+
 // --- API workflow outputs (apps/api) ---
 export type TweetData = {
   tweet_zh: string;
@@ -220,36 +283,59 @@ export type GenerateResponse<TData = any> = {
 
 function toWorkflowRequest(p: StudioGeneratePayload): { type: string; input: any } {
   const lang = normalizeLang(p.language, "en");
-  const link = extractLink(`${p.input.rewards || ""} ${p.input.details || ""}`);
+
+  // Normalize various input names into a single view
+  const topic = safeTrim(p.input.topic);
+  const context = safeTrim(p.input.context ?? p.input.details);
+  const extras = safeTrim(p.input.extras ?? p.input.rewards);
+  const message = safeTrim(p.input.message ?? p.input.topic);
+  const link = extractLink(`${extras} ${context}`);
 
   // ✅ 1) OS path: workflowType specified => direct type, build best-effort input
   const wf = safeTrim(p.workflowType);
   if (wf) {
+    // ✅ Studio Lite workflows (supported)
+    if (
+      wf === "viral_hook" ||
+      wf === "controversial_take" ||
+      wf === "trend_hijack" ||
+      wf === "scarcity_launch" ||
+      wf === "build_public" ||
+      wf === "offer_landing"
+    ) {
+      const input: LiteStudioInput = {
+        topic,
+        context,
+        extras,
+        lang,
+        tone: safeTrim(p.tone),
+        goal: safeTrim(p.goal),
+        constraints: safeTrim(p.constraints),
+        projectSlug: safeTrim(p.projectSlug),
+        mode: p.mode,
+      };
+      return { type: wf, input };
+    }
+
     // --- WAOC Chat ---
     if (wf === "waoc_chat") {
-      const message = safeTrim(p.input.message ?? p.input.topic);
-      const context = safeTrim(p.input.context ?? p.input.details) || "general";
-      const input: WaocChatInput = { message, context, lang };
+      const input: WaocChatInput = { message: message || topic, context: context || "general", lang };
       return { type: wf, input };
     }
 
     // --- WAOC Brain ---
     if (wf === "waoc_brain") {
-      const input: WaocBrainInput = {
-        question: safeTrim(p.input.topic || p.input.message),
-        lang,
-      };
+      const input: WaocBrainInput = { question: topic || message, lang };
       return { type: wf, input };
     }
 
     // --- WAOC Social Post (tweet/thread/poster) ---
     if (wf === "waoc_social_post") {
-      // Use Studio mode to hint output style
       const mode: WaocSocialPostInput["mode"] =
         p.mode === "thread" ? "thread" : p.mode === "command" ? "tweet" : "tweet";
 
       const input: WaocSocialPostInput = {
-        topic: safeTrim(p.input.topic),
+        topic,
         mode,
         brand: safeTrim(p.projectSlug || "WAOC"),
         link,
@@ -260,19 +346,15 @@ function toWorkflowRequest(p: StudioGeneratePayload): { type: string; input: any
 
     // --- WAOC Narrative ---
     if (wf === "waoc_narrative") {
-      const input: WaocNarrativeInput = {
-        topic: safeTrim(p.input.topic),
-        depth: "medium",
-        lang,
-      };
+      const input: WaocNarrativeInput = { topic, depth: "medium", lang };
       return { type: wf, input };
     }
 
     // --- Mission OS ---
     if (wf === "mission_os") {
       const input: MissionOsInput = {
-        goal: safeTrim(p.goal || p.input.topic || "growth"),
-        targetAudience: safeTrim(p.input.details || "builders / creators / founders"),
+        goal: safeTrim(p.goal || topic || "growth"),
+        targetAudience: context || "builders / creators / founders",
         brand: safeTrim(p.projectSlug || "WAOC"),
         link,
         lang,
@@ -283,8 +365,8 @@ function toWorkflowRequest(p: StudioGeneratePayload): { type: string; input: any
     // --- Mission Enhancer ---
     if (wf === "mission_enhancer") {
       const input: MissionEnhancerInput = {
-        title: safeTrim(p.input.topic || "Mission"),
-        description: safeTrim(p.input.details || ""),
+        title: topic || "Mission",
+        description: context,
         goal: safeTrim(p.goal || "growth"),
         lang,
       };
@@ -296,7 +378,7 @@ function toWorkflowRequest(p: StudioGeneratePayload): { type: string; input: any
       const input: IdentityInput = {
         source: "telegram",
         handle: "unknown",
-        message: safeTrim(p.input.topic || p.input.message || ""),
+        message: message || topic || "",
         lang,
       };
       return { type: wf, input };
@@ -305,8 +387,8 @@ function toWorkflowRequest(p: StudioGeneratePayload): { type: string; input: any
     // --- tweet / mission direct passthrough ---
     if (wf === "tweet") {
       const input: TweetInput = {
-        topic: safeTrim(p.input.topic || "OneAI OS update"),
-        audience: safeTrim(p.input.details || "builders / creators / founders"),
+        topic: topic || "OneAI OS update",
+        audience: context || "builders / creators / founders",
         tone: safeTrim(p.tone || "civilization-scale but practical"),
         brand: safeTrim(p.projectSlug || "OneAI"),
         link,
@@ -316,8 +398,8 @@ function toWorkflowRequest(p: StudioGeneratePayload): { type: string; input: any
 
     if (wf === "mission") {
       const input: MissionInput = {
-        goal: safeTrim(p.goal || p.input.topic || "growth"),
-        targetAudience: safeTrim(p.input.details || "builders / creators / founders"),
+        goal: safeTrim(p.goal || topic || "growth"),
+        targetAudience: context || "builders / creators / founders",
       };
       return { type: wf, input };
     }
@@ -326,9 +408,9 @@ function toWorkflowRequest(p: StudioGeneratePayload): { type: string; input: any
     return {
       type: wf,
       input: {
-        topic: p.input.topic,
-        details: p.input.details,
-        rewards: p.input.rewards,
+        topic,
+        context,
+        extras,
         lang,
         tone: p.tone,
         goal: p.goal,
@@ -345,17 +427,16 @@ function toWorkflowRequest(p: StudioGeneratePayload): { type: string; input: any
 
   // ✅ 2) Legacy path: no workflowType => map StudioMode to tweet/mission
   if (p.mode === "mission") {
-    const goal = safeTrim(p.input.topic || p.goal) || "growth";
-    const targetAudience =
-      safeTrim(p.input.details) || "builders / creators / founders";
+    const goal = safeTrim(topic || p.goal) || "growth";
+    const targetAudience = context || "builders / creators / founders";
     const input: MissionInput = { goal, targetAudience };
     return { type: "mission", input };
   }
 
   // Default to tweet
   const input: TweetInput = {
-    topic: safeTrim(p.input.topic) || "OneAI OS update",
-    audience: safeTrim(p.input.details) || "builders / creators / founders",
+    topic: topic || "OneAI OS update",
+    audience: context || "builders / creators / founders",
     tone: safeTrim(p.tone) || "civilization-scale but practical",
     brand: safeTrim(p.projectSlug || "OneAI"),
     link,
@@ -373,6 +454,9 @@ export async function generate(p: StudioGeneratePayload): Promise<GenerateRespon
   const url = `${API_BASE}/v1/generate`;
   const mapped = toWorkflowRequest(p);
 
+  // ✅ PATCH: do NOT auto-enable debug in dev (server requires admin for debug)
+  const debug = p.options?.debug === true;
+
   return safeFetchJSON(url, {
     method: "POST",
     body: JSON.stringify({
@@ -381,7 +465,7 @@ export async function generate(p: StudioGeneratePayload): Promise<GenerateRespon
       options: {
         maxAttempts: p.options?.maxAttempts ?? 3,
         templateVersion: p.options?.templateVersion ?? 1,
-        ...(p.options?.debug ? { debug: true } : {}),
+        ...(debug ? { debug: true } : {}),
       },
     }),
   });

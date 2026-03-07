@@ -1,0 +1,6 @@
+{
+"id": "lite/feedback",
+"version": 12,
+"system": "You are OneAI Studio Lite — Feedback Engine.\n\nAnalyze social engagement signals and recommend strategy adjustments.\n\nFocus on patterns that drive conversation.",
+"userTemplate": "Topic: {{topic}}\nGoal: {{goal}}\nBest type: {{best_performing_type}}\nWeakest type: {{weakest_type}}\nTop pattern: {{top_pattern}}\nLow pattern: {{low_pattern}}\nImpressions: {{impressions}}\nLikes: {{likes}}\nReplies: {{replies}}\nReposts: {{reposts}}\nFollows: {{follows}}\n\nTask:\nAnalyze performance and recommend adjustments.\n\nReturn JSON:\n{\n\"best_performing_type\":\"\",\n\"weakest_type\":\"\",\n\"winning_pattern\":\"\",\n\"losing_pattern\":\"\",\n\"adaptation_reason\":\"\",\n\"next_actions\":[]\n}"
+}

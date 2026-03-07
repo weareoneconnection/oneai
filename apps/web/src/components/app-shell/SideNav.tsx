@@ -8,7 +8,7 @@ import { usePathname } from "next/navigation";
 type Item = { label: string; href: string; desc?: string };
 
 const builders: Item[] = [
-  { label: "Studio", href: "/studio", desc: "Generate structured outputs" },
+  { label: "Studio", href: "/studio/OS", desc: "Generate structured outputs" },
   { label: "Templates", href: "/templates", desc: "Reusable blueprints" },
   { label: "Projects", href: "/projects", desc: "Project spaces" },
   { label: "Workflows", href: "/workflows", desc: "Automation chains" },

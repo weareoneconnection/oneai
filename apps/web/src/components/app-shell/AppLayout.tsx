@@ -5,7 +5,7 @@ import React, { useEffect, useState } from "react";
 import { TopNav } from "./TopNav";
 import { SideNav } from "./SideNav";
 
-export function AppLayout({ children }: { children: React.ReactNode }) {
+export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // Lock body scroll when drawer is open (mobile)

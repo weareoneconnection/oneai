@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StudioLitePack",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "best_hook",
+    "hooks",
+    "tweets",
+    "cta",
+    "schedule",
+    "reply_strategy",
+    "meta"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "minLength": 1 },
+
+    "best_hook": { "type": "string", "minLength": 1 },
+
+    "hooks": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 5
+    },
+
+    "tweets": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+
+    "thread": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+
+    "cta": { "type": "string", "minLength": 1 },
+
+    "replies": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+
+    "schedule": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["day", "content_type", "description"],
+        "properties": {
+          "day": { "type": "number" },
+          "content_type": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+
+    "reply_strategy": {
+      "type": "array",
+      "minItems": 3,
+      "items": { "type": "string", "minLength": 1 }
+    },
+
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pack", "audience", "tone", "language", "source", "generated_at"],
+      "properties": {
+        "pack": { "type": "string", "minLength": 1 },
+        "audience": { "type": "string", "minLength": 1 },
+        "tone": { "type": "string", "minLength": 1 },
+        "language": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "generated_at": { "type": "string" }
+      }
+    }
+  }
+}

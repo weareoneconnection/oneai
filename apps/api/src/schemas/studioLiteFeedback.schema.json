@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "best_performing_type",
+    "weakest_type",
+    "winning_pattern",
+    "losing_pattern",
+    "adaptation_reason",
+    "next_actions"
+  ],
+  "properties": {
+    "best_performing_type": { "type": "string", "minLength": 1 },
+    "weakest_type": { "type": "string", "minLength": 1 },
+    "winning_pattern": { "type": "string", "minLength": 1 },
+    "losing_pattern": { "type": "string", "minLength": 1 },
+    "adaptation_reason": { "type": "string", "minLength": 1 },
+    "next_actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}
