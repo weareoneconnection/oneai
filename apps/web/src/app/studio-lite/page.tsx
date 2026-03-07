@@ -172,10 +172,7 @@ function formatFailedTasks(tasks?: string[]) {
 
 function StudioLiteLogo({ size = 32 }: { size?: number }) {
   return (
-    <div
-      className="shrink-0 overflow-hidden rounded-xl"
-      style={{ width: size, height: size }}
-    >
+    <div className="shrink-0 overflow-hidden rounded-xl" style={{ width: size, height: size }}>
       <Image
         src="/icons/icon-512.png"
         alt="Studio Lite"
@@ -295,9 +292,7 @@ function normalizeText(raw: string) {
 }
 
 function extractGoal(text: string) {
-  const m =
-    text.match(/\bgoal\s*[:=]\s*([^.\n]+)\b/i) ||
-    text.match(/目标\s*[:：]\s*([^。\n]+)\b/i);
+  const m = text.match(/\bgoal\s*[:=]\s*([^.\n]+)\b/i) || text.match(/目标\s*[:：]\s*([^。\n]+)\b/i);
   return m ? m[1].trim() : "";
 }
 
@@ -642,19 +637,14 @@ function saveSessions(sessions: ChatSession[]) {
 
 function loadCredits() {
   if (typeof window === "undefined") return 20;
-
   try {
     const raw = localStorage.getItem(CREDITS_KEY);
-    console.log("[Studio Lite] loadCredits raw =", raw);
-
     if (raw === null || raw === "" || !Number.isFinite(Number(raw))) {
       localStorage.setItem(CREDITS_KEY, "20");
       return 20;
     }
-
     return Math.max(0, Number(raw));
-  } catch (e) {
-    console.error("[Studio Lite] loadCredits error:", e);
+  } catch {
     return 20;
   }
 }
@@ -710,15 +700,11 @@ function CreditsBadge({
   );
 }
 
-function CreditsEmptyState({
-  onUpgrade,
-}: {
-  onUpgrade?: () => void;
-}) {
+function CreditsEmptyState({ onUpgrade }: { onUpgrade?: () => void }) {
   return (
     <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
       <div className="text-sm font-extrabold text-red-700">No credits left</div>
-      <div className="mt-1 text-sm text-red-700/80 leading-relaxed">
+      <div className="mt-1 text-sm leading-relaxed text-red-700/80">
         Upgrade to continue generating packs with Studio Lite.
       </div>
       <div className="mt-3">
@@ -750,12 +736,12 @@ function SidebarRow({
     <button
       onClick={onClick}
       className={cn(
-        "w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold transition",
+        "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold transition",
         active ? "bg-black/5" : "hover:bg-black/[0.04]"
       )}
       title={collapsed ? label : undefined}
     >
-      <span className="h-5 w-5 flex items-center justify-center text-black/70">{icon}</span>
+      <span className="flex h-5 w-5 items-center justify-center text-black/70">{icon}</span>
       {collapsed ? null : <span className="text-black/80">{label}</span>}
     </button>
   );
@@ -785,18 +771,18 @@ function ChatListItem({
       <button
         onClick={onClick}
         className={cn(
-          "w-full text-left rounded-xl px-3 py-2 transition",
+          "w-full rounded-xl px-3 py-2 text-left transition",
           active ? "bg-black/5" : "hover:bg-black/[0.04]"
         )}
       >
         <div className="flex items-center gap-2">
           {pinned ? <span className="text-[12px]">📌</span> : null}
-          <div className="text-sm font-semibold text-black truncate">{title}</div>
+          <div className="truncate text-sm font-semibold text-black">{title}</div>
         </div>
-        <div className="text-xs text-black/50 truncate">{subtitle}</div>
+        <div className="truncate text-xs text-black/50">{subtitle}</div>
       </button>
 
-      <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
+      <div className="absolute right-2 top-2 hidden gap-1 group-hover:flex">
         <button
           onClick={onPin}
           className="rounded-lg border border-black/10 bg-white px-2 py-1 text-[11px] font-semibold text-black/55 hover:bg-black/[0.04]"
@@ -844,9 +830,9 @@ function Msg({
   const isSkeleton = kind === "skeleton";
 
   return (
-    <div className={cn("w-full flex", isUser ? "justify-end" : "justify-start")}>
+    <div className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}>
       <div className={cn("w-full max-w-[760px]", isUser ? "pl-6 sm:pl-10" : "pr-6 sm:pr-10")}>
-        <div className="rounded-2xl border border-black/10 bg-white px-4 py-3 shadow-sm hover:shadow-md transition-shadow">
+        <div className="rounded-2xl border border-black/10 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-xs font-semibold text-black/55">{isUser ? "You" : "OneAI"}</div>
@@ -854,7 +840,7 @@ function Msg({
             </div>
 
             {!isSkeleton && actions?.length ? (
-              <div className="flex gap-2 shrink-0">
+              <div className="shrink-0 flex gap-2">
                 {actions.includes("copy") ? (
                   <button
                     onClick={onCopy}
@@ -877,12 +863,14 @@ function Msg({
 
           {isSkeleton ? (
             <div className="mt-3 space-y-3">
-              <div className="h-4 w-2/3 rounded bg-black/[0.06] animate-pulse" />
-              <div className="h-4 w-5/6 rounded bg-black/[0.05] animate-pulse" />
-              <div className="h-4 w-3/5 rounded bg-black/[0.05] animate-pulse" />
+              <div className="h-4 w-2/3 animate-pulse rounded bg-black/[0.06]" />
+              <div className="h-4 w-5/6 animate-pulse rounded bg-black/[0.05]" />
+              <div className="h-4 w-3/5 animate-pulse rounded bg-black/[0.05]" />
             </div>
           ) : (
-            <div className="mt-3 whitespace-pre-wrap text-sm text-black/80 leading-relaxed">{text}</div>
+            <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-black/80">
+              {text}
+            </div>
           )}
         </div>
       </div>
@@ -894,7 +882,7 @@ function SuggestChip({ text, onClick }: { text: string; onClick?: () => void }) 
   return (
     <button
       onClick={onClick}
-      className="shrink-0 rounded-full border border-black/10 bg-white px-3 py-1 text-xs font-semibold text-black/65 hover:bg-black/[0.04] transition"
+      className="shrink-0 rounded-full border border-black/10 bg-white px-3 py-1 text-xs font-semibold text-black/65 transition hover:bg-black/[0.04]"
       title={text}
     >
       {text}
@@ -925,8 +913,8 @@ function Modal({
   return (
     <div className="fixed inset-0 z-[70]">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="absolute inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <div className="w-full sm:max-w-2xl rounded-t-2xl sm:rounded-2xl border border-black/10 bg-white shadow-xl max-h-[88vh] overflow-hidden">
+      <div className="absolute inset-0 flex items-end justify-center p-0 sm:items-center sm:p-4">
+        <div className="max-h-[88vh] w-full overflow-hidden rounded-t-2xl border border-black/10 bg-white shadow-xl sm:max-w-2xl sm:rounded-2xl">
           <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
             <div className="text-sm font-extrabold">{title}</div>
             <button
@@ -956,7 +944,7 @@ function MobileDrawer({
   return (
     <div className="fixed inset-0 z-[65] md:hidden">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="absolute left-0 top-0 h-full w-[86%] max-w-[320px] bg-white border-r border-black/10 shadow-xl overflow-auto">
+      <div className="absolute left-0 top-0 h-full w-[86%] max-w-[320px] overflow-auto border-r border-black/10 bg-white shadow-xl">
         {children}
       </div>
     </div>
@@ -976,7 +964,7 @@ function ActionMenu({
   return (
     <div className="fixed inset-0 z-[66] md:hidden">
       <div className="absolute inset-0" onClick={onClose} />
-      <div className="absolute right-3 top-14 w-[220px] rounded-2xl border border-black/10 bg-white shadow-xl p-2">
+      <div className="absolute right-3 top-14 w-[220px] rounded-2xl border border-black/10 bg-white p-2 shadow-xl">
         {children}
       </div>
     </div>
@@ -997,8 +985,8 @@ function MenuAction({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "w-full text-left rounded-xl px-3 py-2 text-sm font-semibold",
-        disabled ? "opacity-40 pointer-events-none" : "hover:bg-black/[0.04]"
+        "w-full rounded-xl px-3 py-2 text-left text-sm font-semibold",
+        disabled ? "pointer-events-none opacity-40" : "hover:bg-black/[0.04]"
       )}
     >
       {label}
@@ -1033,9 +1021,6 @@ export default function StudioLitePage() {
   const [prompt, setPrompt] = useState("");
   const [creditsLeft, setCreditsLeft] = useState(20);
   const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-  setMounted(true);
-}, []);
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [toast, setToast] = useState("");
@@ -1047,56 +1032,58 @@ export default function StudioLitePage() {
   const [renameValue, setRenameValue] = useState("");
 
   useEffect(() => {
-  if (!mounted) return;
-
-  const initial = loadSessions();
-  const credits = loadCredits();
-
-  console.log("[Studio Lite] initial credits =", credits);
-  setCreditsLeft(credits);
-
-  if (initial.length) {
-    setSessions(initial);
-    setActiveId(initial[0].id);
-    setPack(initial[0].pack);
-    setAudience(initial[0].audience);
-    setTone(initial[0].tone);
-    setLanguage(initial[0].language);
-  } else {
-    const now = new Date().toISOString();
-    const s: ChatSession = {
-      id: makeId(),
-      title: "New chat",
-      createdAt: now,
-      updatedAt: now,
-      pack: "quick",
-      audience: "builders",
-      tone: "contrarian",
-      language: "en",
-      messages: [
-        {
-          id: makeId(),
-          role: "assistant",
-          title: "Hello! 👋",
-          text:
-            "Describe what you want in one sentence and press Enter.\n\nExamples:\n• Launch pack. Founders. Goal: 100 waitlist. Topic: AI workflows.\n• Reply pack for web3. Goal: get replies on big accounts.\n• 输入中文，我会直接用中文生成内容。\n\nStudio Lite will generate hooks, tweets, threads and replies automatically.",
-          createdAt: now,
-        },
-      ],
-      lastOutput: null,
-      lastPrompt: null,
-    };
-    const next = sortSessions([s]);
-    setSessions(next);
-    setActiveId(s.id);
-    saveSessions(next);
-  }
-}, [mounted]);
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
-  console.log("[Studio Lite] saveCredits =", creditsLeft);
-  saveCredits(creditsLeft);
-}, [creditsLeft]);
+    if (!mounted) return;
+
+    const initial = loadSessions();
+    const credits = loadCredits();
+    setCreditsLeft(credits);
+
+    if (initial.length) {
+      setSessions(initial);
+      setActiveId(initial[0].id);
+      setPack(initial[0].pack);
+      setAudience(initial[0].audience);
+      setTone(initial[0].tone);
+      setLanguage(initial[0].language);
+    } else {
+      const now = new Date().toISOString();
+      const s: ChatSession = {
+        id: makeId(),
+        title: "New chat",
+        createdAt: now,
+        updatedAt: now,
+        pack: "quick",
+        audience: "builders",
+        tone: "contrarian",
+        language: "en",
+        messages: [
+          {
+            id: makeId(),
+            role: "assistant",
+            title: "Hello! 👋",
+            text:
+              "Describe what you want in one sentence and press Enter.\n\nExamples:\n• Launch pack. Founders. Goal: 100 waitlist. Topic: AI workflows.\n• Reply pack for web3. Goal: get replies on big accounts.\n• 输入中文，我会直接用中文生成内容。\n\nStudio Lite will generate hooks, tweets, threads and replies automatically.",
+            createdAt: now,
+          },
+        ],
+        lastOutput: null,
+        lastPrompt: null,
+      };
+      const next = sortSessions([s]);
+      setSessions(next);
+      setActiveId(s.id);
+      saveSessions(next);
+    }
+  }, [mounted]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    saveCredits(creditsLeft);
+  }, [creditsLeft, mounted]);
 
   useEffect(() => {
     if (!toast) return;
@@ -1282,7 +1269,11 @@ export default function StudioLitePage() {
 
   async function exportScheduleJson() {
     if (!schedulePlan) return setToast("No schedule");
-    downloadFile(`oneai-schedule-${active?.id || "chat"}.json`, JSON.stringify(schedulePlan, null, 2), "application/json");
+    downloadFile(
+      `oneai-schedule-${active?.id || "chat"}.json`,
+      JSON.stringify(schedulePlan, null, 2),
+      "application/json"
+    );
     setToast("Exported Schedule");
   }
 
@@ -1477,7 +1468,7 @@ export default function StudioLitePage() {
 
   const DesktopSidebar = (
     <>
-      <div className="px-3 py-3 flex items-center justify-between">
+      <div className="flex items-center justify-between px-3 py-3">
         <div className="flex items-center gap-2">
           <StudioLiteLogo size={32} />
           {sidebarCollapsed ? null : (
@@ -1490,7 +1481,7 @@ export default function StudioLitePage() {
 
         <button
           onClick={() => setSidebarCollapsed((v) => !v)}
-          className="hidden md:inline-flex rounded-lg border border-black/10 bg-white px-2 py-1 text-xs font-semibold text-black/60 hover:bg-black/[0.04]"
+          className="hidden rounded-lg border border-black/10 bg-white px-2 py-1 text-xs font-semibold text-black/60 hover:bg-black/[0.04] md:inline-flex"
           title="Collapse"
         >
           {sidebarCollapsed ? "→" : "←"}
@@ -1498,16 +1489,46 @@ export default function StudioLitePage() {
       </div>
 
       <div className="px-3 pb-3">
-        <Button className={cn("w-full rounded-xl bg-black text-white hover:bg-neutral-900", sidebarCollapsed && "px-0")} onClick={newChat}>
+        <Button
+          className={cn(
+            "w-full rounded-xl bg-black text-white hover:bg-neutral-900",
+            sidebarCollapsed && "px-0"
+          )}
+          onClick={newChat}
+        >
           {sidebarCollapsed ? "+" : "+ New chat"}
         </Button>
       </div>
 
-      <div className="px-2 space-y-1">
-        <SidebarRow icon={<span>🗂️</span>} label="Chats" active={sidebarTab === "chats"} onClick={() => setSidebarTab("chats")} collapsed={sidebarCollapsed} />
-        <SidebarRow icon={<span>🔎</span>} label="Search" active={sidebarTab === "search"} onClick={() => setSidebarTab("search")} collapsed={sidebarCollapsed} />
-        <SidebarRow icon={<span>⚡</span>} label="Packs" active={false} onClick={() => setPacksOpen(true)} collapsed={sidebarCollapsed} />
-        <SidebarRow icon={<span>⚙️</span>} label="Settings" active={sidebarTab === "settings"} onClick={() => setSidebarTab("settings")} collapsed={sidebarCollapsed} />
+      <div className="space-y-1 px-2">
+        <SidebarRow
+          icon={<span>🗂️</span>}
+          label="Chats"
+          active={sidebarTab === "chats"}
+          onClick={() => setSidebarTab("chats")}
+          collapsed={sidebarCollapsed}
+        />
+        <SidebarRow
+          icon={<span>🔎</span>}
+          label="Search"
+          active={sidebarTab === "search"}
+          onClick={() => setSidebarTab("search")}
+          collapsed={sidebarCollapsed}
+        />
+        <SidebarRow
+          icon={<span>⚡</span>}
+          label="Packs"
+          active={false}
+          onClick={() => setPacksOpen(true)}
+          collapsed={sidebarCollapsed}
+        />
+        <SidebarRow
+          icon={<span>⚙️</span>}
+          label="Settings"
+          active={sidebarTab === "settings"}
+          onClick={() => setSidebarTab("settings")}
+          collapsed={sidebarCollapsed}
+        />
       </div>
 
       <div className="flex-1 overflow-auto px-3 py-3">
@@ -1515,7 +1536,7 @@ export default function StudioLitePage() {
           <>
             {sidebarTab === "chats" && (
               <>
-                <div className="text-xs font-semibold text-black/55 mb-2">History</div>
+                <div className="mb-2 text-xs font-semibold text-black/55">History</div>
 
                 {groupedChats.pinned.length ? (
                   <div className="mb-4">
@@ -1567,7 +1588,7 @@ export default function StudioLitePage() {
 
             {sidebarTab === "search" && (
               <>
-                <div className="text-xs font-semibold text-black/55 mb-2">Search chats</div>
+                <div className="mb-2 text-xs font-semibold text-black/55">Search chats</div>
                 <div className="rounded-xl border border-black/10 bg-white px-3 py-2">
                   <input
                     value={searchQuery}
@@ -1576,16 +1597,22 @@ export default function StudioLitePage() {
                     className="w-full bg-transparent text-sm outline-none placeholder:text-black/35"
                   />
                 </div>
-                <div className="mt-3 text-xs text-black/45">Tip: keywords like “launch”, “thread”, “replies”.</div>
+                <div className="mt-3 text-xs text-black/45">
+                  Tip: keywords like “launch”, “thread”, “replies”.
+                </div>
               </>
             )}
 
             {sidebarTab === "settings" && (
               <>
-                <div className="text-xs font-semibold text-black/55 mb-2">Preferences</div>
+                <div className="mb-2 text-xs font-semibold text-black/55">Preferences</div>
 
                 <div className="space-y-2">
-                  <Select value={audience} onChange={(e) => setAudience((e.target as HTMLSelectElement).value as AudienceKey)} className="bg-white">
+                  <Select
+                    value={audience}
+                    onChange={(e) => setAudience((e.target as HTMLSelectElement).value as AudienceKey)}
+                    className="bg-white"
+                  >
                     <option value="founders">Audience: Founders</option>
                     <option value="builders">Audience: Builders</option>
                     <option value="web3">Audience: Web3</option>
@@ -1593,14 +1620,22 @@ export default function StudioLitePage() {
                     <option value="developers">Audience: Developers</option>
                   </Select>
 
-                  <Select value={tone} onChange={(e) => setTone((e.target as HTMLSelectElement).value as ToneKey)} className="bg-white">
+                  <Select
+                    value={tone}
+                    onChange={(e) => setTone((e.target as HTMLSelectElement).value as ToneKey)}
+                    className="bg-white"
+                  >
                     <option value="contrarian">Tone: Contrarian</option>
                     <option value="calm">Tone: Calm</option>
                     <option value="funny">Tone: Funny</option>
                     <option value="serious">Tone: Serious</option>
                   </Select>
 
-                  <Select value={language} onChange={(e) => setLanguage((e.target as HTMLSelectElement).value as LangKey)} className="bg-white">
+                  <Select
+                    value={language}
+                    onChange={(e) => setLanguage((e.target as HTMLSelectElement).value as LangKey)}
+                    className="bg-white"
+                  >
                     <option value="en">Language: English</option>
                     <option value="zh">Language: 中文</option>
                   </Select>
@@ -1613,7 +1648,7 @@ export default function StudioLitePage() {
                     <CreditsBadge credits={creditsLeft} />
                   </div>
 
-                  <div className="mt-3 text-xs text-black/50 leading-relaxed">
+                  <div className="mt-3 text-xs leading-relaxed text-black/50">
                     Each generation costs {GENERATION_COST} credit.
                   </div>
 
@@ -1649,11 +1684,11 @@ export default function StudioLitePage() {
   );
 
   return (
-    <div className="h-screen bg-[#F7F7F8] text-black">
-      <div className="flex h-full">
+    <div className="h-screen overflow-x-hidden bg-[#F7F7F8] text-black">
+      <div className="flex h-full overflow-x-hidden">
         <aside
           className={cn(
-            "hidden md:flex shrink-0 flex-col border-r border-black/10 bg-white",
+            "hidden shrink-0 flex-col border-r border-black/10 bg-white md:flex",
             sidebarCollapsed ? "w-[72px]" : "w-[260px]"
           )}
         >
@@ -1664,12 +1699,12 @@ export default function StudioLitePage() {
           <div className="flex h-full flex-col">{DesktopSidebar}</div>
         </MobileDrawer>
 
-        <section className="flex-1 flex flex-col min-w-0">
-          <div className="border-b border-black/10 bg-white/90 backdrop-blur sticky top-0 z-30">
-            <div className="mx-auto max-w-4xl px-3 sm:px-4 py-3 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
+        <section className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+          <div className="sticky top-0 z-30 border-b border-black/10 bg-white/90 backdrop-blur">
+            <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-3 py-3 sm:px-4">
+              <div className="flex min-w-0 items-center gap-2">
                 <button
-                  className="md:hidden h-9 w-9 rounded-full border border-black/10 bg-white text-sm font-semibold"
+                  className="h-9 w-9 rounded-full border border-black/10 bg-white text-sm font-semibold md:hidden"
                   onClick={() => setMobileNavOpen(true)}
                   title="Menu"
                 >
@@ -1677,23 +1712,23 @@ export default function StudioLitePage() {
                 </button>
 
                 <StudioLiteLogo size={32} />
-                <div className="leading-tight min-w-0">
-                  <div className="text-sm font-extrabold truncate">OneAI Studio Lite</div>
-                  <div className="text-xs text-black/55 truncate">AI Twitter Growth OS</div>
+                <div className="min-w-0 leading-tight">
+                  <div className="truncate text-sm font-extrabold">OneAI Studio Lite</div>
+                  <div className="truncate text-xs text-black/55">AI Twitter Growth OS</div>
                 </div>
 
-                <span className="hidden lg:inline-flex rounded-full border border-black/10 bg-black/[0.03] px-2.5 py-1 text-xs font-semibold text-black/70">
+                <span className="hidden rounded-full border border-black/10 bg-black/[0.03] px-2.5 py-1 text-xs font-semibold text-black/70 lg:inline-flex">
                   {packLine}
                 </span>
               </div>
 
-              <div className="hidden md:flex items-center gap-2">
+              <div className="hidden items-center gap-2 md:flex">
                 <CreditsBadge credits={creditsLeft} />
 
                 <button
                   className={cn(
                     "rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold hover:bg-black/[0.04]",
-                    !active?.lastOutput && "opacity-40 pointer-events-none"
+                    !active?.lastOutput && "pointer-events-none opacity-40"
                   )}
                   onClick={copyAll}
                 >
@@ -1702,7 +1737,7 @@ export default function StudioLitePage() {
                 <button
                   className={cn(
                     "rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold hover:bg-black/[0.04]",
-                    !active?.lastOutput && "opacity-40 pointer-events-none"
+                    !active?.lastOutput && "pointer-events-none opacity-40"
                   )}
                   onClick={exportMarkdown}
                 >
@@ -1711,7 +1746,7 @@ export default function StudioLitePage() {
                 <button
                   className={cn(
                     "rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold hover:bg-black/[0.04]",
-                    !active?.lastOutput && "opacity-40 pointer-events-none"
+                    !active?.lastOutput && "pointer-events-none opacity-40"
                   )}
                   onClick={exportRawJson}
                 >
@@ -1720,7 +1755,7 @@ export default function StudioLitePage() {
                 <button
                   className={cn(
                     "rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold hover:bg-black/[0.04]",
-                    !active?.lastOutput && "opacity-40 pointer-events-none"
+                    !active?.lastOutput && "pointer-events-none opacity-40"
                   )}
                   onClick={exportJsonSchema}
                 >
@@ -1729,7 +1764,7 @@ export default function StudioLitePage() {
                 <button
                   className={cn(
                     "rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold hover:bg-black/[0.04]",
-                    !active?.lastOutput && "opacity-40 pointer-events-none"
+                    !active?.lastOutput && "pointer-events-none opacity-40"
                   )}
                   onClick={openSchedulePlan}
                 >
@@ -1740,7 +1775,7 @@ export default function StudioLitePage() {
                 </Button>
               </div>
 
-              <div className="md:hidden flex items-center gap-2">
+              <div className="flex items-center gap-2 md:hidden">
                 <CreditsBadge credits={creditsLeft} compact />
 
                 <button
@@ -1750,7 +1785,10 @@ export default function StudioLitePage() {
                 >
                   ⋯
                 </button>
-                <Button className="rounded-full bg-black text-white hover:bg-neutral-900 px-4" onClick={() => setToast("Upgrade flow here")}>
+                <Button
+                  className="rounded-full bg-black px-4 text-white hover:bg-neutral-900"
+                  onClick={() => setToast("Upgrade flow here")}
+                >
                   Upgrade
                 </Button>
               </div>
@@ -1763,30 +1801,32 @@ export default function StudioLitePage() {
             <MenuAction label="Export JSON" onClick={exportRawJson} disabled={!active?.lastOutput} />
             <MenuAction label="Export Schema" onClick={exportJsonSchema} disabled={!active?.lastOutput} />
             <MenuAction label="Schedule" onClick={openSchedulePlan} disabled={!active?.lastOutput} />
-            <MenuAction label="Choose pack" onClick={() => { setMobileActionsOpen(false); setPacksOpen(true); }} />
+            <MenuAction
+              label="Choose pack"
+              onClick={() => {
+                setMobileActionsOpen(false);
+                setPacksOpen(true);
+              }}
+            />
           </ActionMenu>
 
-          <div className="flex-1 overflow-auto">
-            <div className="mx-auto max-w-4xl px-3 sm:px-4 py-4 sm:py-6 space-y-5">
-              <div className="pt-1 pb-1">
-  <div className="text-2xl md:text-3xl font-extrabold tracking-tight">What do you want to create?</div>
-  <div className="mt-2 text-sm text-black/55">
-    Default output is English. Chinese input will reply in Chinese.
-  </div>
-
-  <div className="mt-2 space-y-1 text-xs font-semibold text-red-500">
-  <div>BUILD: studio-lite-credits-debug-01</div>
-  <div>creditsLeft: {creditsLeft}</div>
-  <div>ls: {mounted ? String(localStorage.getItem(CREDITS_KEY)) : "…"}</div>
-  </div>
-</div>
+          <div className="flex-1 overflow-auto overflow-x-hidden">
+            <div className="mx-auto max-w-4xl space-y-5 px-3 py-4 sm:px-4 sm:py-6">
+              <div className="pb-1 pt-1">
+                <div className="text-2xl font-extrabold tracking-tight md:text-3xl">
+                  What do you want to create?
+                </div>
+                <div className="mt-2 text-sm text-black/55">
+                  Default output is English. Chinese input will reply in Chinese.
+                </div>
+              </div>
 
               {creditsLeft <= 0 ? (
                 <CreditsEmptyState onUpgrade={() => setToast("Upgrade flow here")} />
               ) : null}
 
-              <div className="overflow-x-auto">
-                <div className="flex gap-2 pb-2 w-max min-w-full">
+              <div className="overflow-x-auto overscroll-x-contain">
+                <div className="flex gap-2 pb-2">
                   {suggestions.map((s) => (
                     <SuggestChip
                       key={s}
@@ -1822,10 +1862,12 @@ export default function StudioLitePage() {
             </div>
           </div>
 
-          <div className="sticky bottom-0 z-20 border-t border-black/10 bg-white/95 backdrop-blur pb-[max(env(safe-area-inset-bottom),0px)]">
-            <div className="mx-auto max-w-4xl px-3 sm:px-4 py-3 sm:py-4">
+          <div className="sticky bottom-0 z-20 border-t border-black/10 bg-white/95 pb-[max(env(safe-area-inset-bottom),0px)] backdrop-blur">
+            <div className="mx-auto max-w-4xl px-3 py-3 sm:px-4 sm:py-4">
               {toast ? (
-                <div className="mb-3 rounded-xl border border-black/10 bg-white px-4 py-2 text-sm text-black/70">{toast}</div>
+                <div className="mb-3 rounded-xl border border-black/10 bg-white px-4 py-2 text-sm text-black/70">
+                  {toast}
+                </div>
               ) : null}
 
               <div className="rounded-[22px] border border-black/10 bg-white shadow-sm">
@@ -1835,14 +1877,14 @@ export default function StudioLitePage() {
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     onKeyDown={onKeyDownComposer}
-                    placeholder='Message OneAI… (Enter to send, Shift+Enter for newline)'
+                    placeholder="Message OneAI… (Enter to send, Shift+Enter for newline)"
                     className="min-h-[84px] max-h-[220px] w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-black/35"
                   />
                 </div>
 
                 <div className="flex flex-col gap-2 border-t border-black/10 px-4 py-3">
-                  <div className="overflow-x-auto">
-                    <div className="flex gap-2 w-max min-w-full pb-1">
+                  <div className="overflow-x-auto overscroll-x-contain">
+                    <div className="flex gap-2 pb-1">
                       {parsedLive.tags?.length ? (
                         parsedLive.tags.slice(0, 8).map((t) => <Tag key={t} text={t} />)
                       ) : (
@@ -1861,11 +1903,11 @@ export default function StudioLitePage() {
                     <div>{creditsLeft} credits remaining</div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 min-w-0 overflow-x-auto">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                       <button
                         onClick={() => setToast("Upload (stub)")}
-                        className="h-9 w-9 shrink-0 rounded-full border border-black/10 bg-white text-black/60 hover:bg-black/[0.04] transition"
+                        className="h-9 w-9 rounded-full border border-black/10 bg-white text-black/60 transition hover:bg-black/[0.04]"
                         title="Upload"
                       >
                         +
@@ -1873,21 +1915,21 @@ export default function StudioLitePage() {
 
                       <button
                         onClick={() => setPacksOpen(true)}
-                        className="rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-semibold text-black/70 hover:bg-black/[0.04] shrink-0"
+                        className="rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-semibold text-black/70 hover:bg-black/[0.04]"
                         title="Choose pack"
                       >
                         {PACKS[pack].label}
                       </button>
 
-                      <span className="rounded-full border border-black/10 bg-black/[0.03] px-3 py-1 text-xs font-semibold text-black/70 shrink-0">
+                      <span className="rounded-full border border-black/10 bg-black/[0.03] px-3 py-1 text-xs font-semibold text-black/70">
                         {creditsLeft} credits
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 self-end sm:self-auto">
                       <button
                         onClick={() => setToast("Model (stub)")}
-                        className="hidden sm:inline-flex rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-semibold text-black/70 hover:bg-black/[0.04]"
+                        className="hidden rounded-full border border-black/10 bg-white px-3 py-2 text-xs font-semibold text-black/70 hover:bg-black/[0.04] sm:inline-flex"
                         title="Model"
                       >
                         Studio Lite
@@ -1898,9 +1940,7 @@ export default function StudioLitePage() {
                         onClick={onGenerate}
                         className={cn(
                           "inline-flex h-10 items-center justify-center rounded-full px-4 text-xs font-extrabold transition shadow-sm",
-                          canGenerate
-                            ? "bg-black text-white hover:bg-neutral-900"
-                            : "bg-black/10 text-black/30"
+                          canGenerate ? "bg-black text-white hover:bg-neutral-900" : "bg-black/10 text-black/30"
                         )}
                         title={`Generate · ${GENERATION_COST} credit`}
                       >
@@ -1932,9 +1972,13 @@ export default function StudioLitePage() {
                   isActive ? "border-black/20 bg-black text-white" : "border-black/10 bg-white hover:bg-black/[0.04]"
                 )}
               >
-                <div className={cn("text-sm font-extrabold", isActive ? "text-white" : "text-black")}>{PACKS[k].label}</div>
-                <div className={cn("text-xs mt-1", isActive ? "text-white/70" : "text-black/55")}>{PACKS[k].desc}</div>
-                <div className={cn("text-[11px] mt-2", isActive ? "text-white/60" : "text-black/45")}>
+                <div className={cn("text-sm font-extrabold", isActive ? "text-white" : "text-black")}>
+                  {PACKS[k].label}
+                </div>
+                <div className={cn("mt-1 text-xs", isActive ? "text-white/70" : "text-black/55")}>
+                  {PACKS[k].desc}
+                </div>
+                <div className={cn("mt-2 text-[11px]", isActive ? "text-white/60" : "text-black/45")}>
                   {PACKS[k].includes.join(" · ")}
                 </div>
               </button>
@@ -1955,7 +1999,8 @@ export default function StudioLitePage() {
               <div className="text-xs font-semibold text-black/60">Strategy</div>
               <div className="mt-1 text-sm text-black/80">{schedulePlan.strategy}</div>
               <div className="mt-2 text-xs text-black/50">
-                Timezone: {schedulePlan.timezone} • Generated: {new Date(schedulePlan.generated_at_iso).toLocaleString()}
+                Timezone: {schedulePlan.timezone} • Generated:{" "}
+                {new Date(schedulePlan.generated_at_iso).toLocaleString()}
               </div>
             </div>
 
@@ -1964,10 +2009,12 @@ export default function StudioLitePage() {
                 <div key={it.id} className="rounded-2xl border border-black/10 bg-white p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-xs font-semibold text-black/55">{new Date(it.suggested_at_iso).toLocaleString()}</div>
+                      <div className="text-xs font-semibold text-black/55">
+                        {new Date(it.suggested_at_iso).toLocaleString()}
+                      </div>
                       <div className="text-sm font-extrabold">{it.label}</div>
                     </div>
-                    <div className="flex gap-2 shrink-0">
+                    <div className="shrink-0 flex gap-2">
                       <button
                         className="rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-black/70 hover:bg-black/[0.04]"
                         onClick={() => copyToClipboard(it.text).then((ok) => setToast(ok ? "Copied" : "Copy failed"))}
@@ -1993,7 +2040,7 @@ export default function StudioLitePage() {
                       </button>
                     </div>
                   </div>
-                  <div className="mt-2 whitespace-pre-wrap text-sm text-black/80 break-words">{it.text}</div>
+                  <div className="mt-2 whitespace-pre-wrap break-words text-sm text-black/80">{it.text}</div>
                 </div>
               ))}
             </div>
@@ -2031,7 +2078,10 @@ export default function StudioLitePage() {
             >
               Cancel
             </button>
-            <button onClick={applyRename} className="rounded-full bg-black px-4 py-2 text-xs font-semibold text-white hover:bg-neutral-900">
+            <button
+              onClick={applyRename}
+              className="rounded-full bg-black px-4 py-2 text-xs font-semibold text-white hover:bg-neutral-900"
+            >
               Save
             </button>
           </div>
