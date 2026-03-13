@@ -4,12 +4,45 @@
   "additionalProperties": false,
   "required": ["message"],
   "properties": {
-    "message": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
     "context": {
       "type": "string",
       "enum": ["community", "mission", "philosophy", "general"],
       "default": "general"
     },
-    "lang": { "type": "string", "enum": ["en", "zh"], "default": "en" }
+    "lang": {
+      "type": "string",
+      "enum": ["en", "zh"],
+      "default": "en"
+    },
+    "emotionHint": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "greeting_morning",
+            "greeting_night",
+            "stress",
+            "anger",
+            "celebrate",
+            "gratitude",
+            "apology"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "recentMessages": {
+      "type": "string",
+      "maxLength": 20000,
+      "default": ""
+    }
   }
 }

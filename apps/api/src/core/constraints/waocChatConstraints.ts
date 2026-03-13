@@ -1,6 +1,14 @@
 // src/core/constraints/waocChatConstraints.ts
 
-export type WaocSuggestedAction = "none" | "/links" | "/mission" | "/rank" | "/report";
+export type WaocSuggestedAction =
+  | "none"
+  | "/links"
+  | "/mission"
+  | "/rank"
+  | "/report"
+  | "/builders"
+  | "/knowledge"
+  | "/growth";
 
 export type WaocChatData = {
   reply: string;
@@ -17,11 +25,21 @@ type CheckResult =
   | { ok: true; data: WaocChatData }
   | { ok: false; reason: string; data?: WaocChatData };
 
-const ACTIONS: WaocSuggestedAction[] = ["none", "/links", "/mission", "/rank", "/report"];
+const ACTIONS: WaocSuggestedAction[] = [
+  "none",
+  "/links",
+  "/mission",
+  "/rank",
+  "/report",
+  "/builders",
+  "/knowledge",
+  "/growth",
+];
 
 function norm(s: any) {
   return String(s ?? "").trim();
 }
+
 function lower(s: any) {
   return norm(s).toLowerCase();
 }
@@ -29,7 +47,6 @@ function lower(s: any) {
 function sanitizeReply(reply: any) {
   let r = norm(reply);
   if (!r) r = "Got it.";
-  // remove accidental code fences if LLM leaks
   r = r.replace(/```[\s\S]*?```/g, "").trim();
   if (!r) r = "Got it.";
   return r;
@@ -54,12 +71,15 @@ function userExplicitlyAsksMeaning(msgLower: string) {
 }
 
 function ensureFirstLineFullForm(reply: string, lang: "en" | "zh") {
-  const required = lang === "zh" ? "WAOC = We Are One Connection。" : "WAOC = We Are One Connection.";
+  const required =
+    lang === "zh"
+      ? "WAOC = We Are One Connection。"
+      : "WAOC = We Are One Connection.";
+
   const r = sanitizeReply(reply);
 
   if (r.startsWith(required)) return r;
 
-  // avoid duplicates if already somewhere
   const cleaned = r.replace(required, "").trim();
   return cleaned ? `${required}\n${cleaned}` : required;
 }
@@ -114,15 +134,14 @@ export function checkWaocChatConstraints(args: CheckArgs): CheckResult {
     fixed.reply = ensureFirstLineFullForm(fixed.reply, lang);
   }
 
-  // If user asks external verification-like question, encourage /links unless already set
   if (userMessage && looksLikeExternalVerification(msgLower)) {
     if (fixed.suggestedAction === "none") fixed.suggestedAction = "/links";
   }
 
-  // Minimal validity
   if (!fixed.reply) return { ok: false, reason: "empty_reply", data: fixed };
-  if (!ACTIONS.includes(fixed.suggestedAction ?? "none"))
+  if (!ACTIONS.includes(fixed.suggestedAction ?? "none")) {
     return { ok: false, reason: "bad_action", data: fixed };
+  }
 
   return { ok: true, data: fixed };
 }
@@ -131,7 +150,9 @@ export function checkWaocChatConstraints(args: CheckArgs): CheckResult {
  * Hard guard used in workflow:
  * never crash, always returns ok:true data
  */
-export function checkWaocChatConstraintsSafe(args: CheckArgs): { ok: true; data: WaocChatData } {
+export function checkWaocChatConstraintsSafe(
+  args: CheckArgs
+): { ok: true; data: WaocChatData } {
   const r = checkWaocChatConstraints(args);
   if (r.ok) return { ok: true, data: r.data };
   const d = r.data ?? { reply: "Got it.", suggestedAction: "none" };

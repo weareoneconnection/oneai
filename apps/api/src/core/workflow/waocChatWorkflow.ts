@@ -1,5 +1,5 @@
 // src/core/workflows/waocChatWorkflow.ts
-import { runTask } from "./registry.js";
+import { runTask, registerWorkflow } from "./registry.js";
 import type { WorkflowContext } from "./types.js";
 import type { WorkflowDefinition } from "./engine.js";
 
@@ -10,13 +10,28 @@ import { validateSchemaStep } from "./steps/validateSchemaStep.js";
 import { refineJsonStep } from "./steps/refineJsonStep.js";
 
 import { waocChatValidator } from "../validators/waocChatValidator.js";
-import { registerWorkflow } from "./registry.js";
-
 import {
   checkWaocChatConstraints,
   type WaocChatData,
   type WaocSuggestedAction,
 } from "../constraints/waocChatConstraints.js";
+
+/* =========================
+   Constants
+========================= */
+
+const WAOC_CHAT_TEMPLATE_VERSION = 10;
+
+const ALLOWED_ACTIONS: WaocSuggestedAction[] = [
+  "none",
+  "/links",
+  "/mission",
+  "/rank",
+  "/report",
+  "/builders",
+  "/knowledge",
+  "/growth",
+];
 
 /* =========================
    Types
@@ -35,6 +50,7 @@ export type WaocChatInput = {
     | "gratitude"
     | "apology"
     | null;
+  recentMessages?: string;
 };
 
 type WaocChatCtx = WorkflowContext<WaocChatInput, WaocChatData> & {
@@ -48,15 +64,67 @@ type WaocChatCtx = WorkflowContext<WaocChatInput, WaocChatData> & {
 function norm(s: any) {
   return String(s ?? "").trim();
 }
+
 function lower(s: any) {
   return norm(s).toLowerCase();
 }
+
 function env(name: string) {
   const v = process.env[name];
   return v ? String(v).trim() : "";
 }
+
 function nonEmptyList(xs: Array<string | false | null | undefined>) {
   return xs.map((x) => String(x || "").trim()).filter(Boolean);
+}
+
+function isAllowedAction(v: any): v is WaocSuggestedAction {
+  return ALLOWED_ACTIONS.includes(v as WaocSuggestedAction);
+}
+
+function ensureAllowedAction(v: any): WaocSuggestedAction {
+  return isAllowedAction(v) ? v : "none";
+}
+
+function getRecentMessages(ctx: WaocChatCtx) {
+  return norm(
+    ctx.input?.recentMessages ??
+      (ctx as any)?.recentMessages ??
+      (ctx as any)?.meta?.recentMessages ??
+      ""
+  );
+}
+
+function getChatId(ctx: WaocChatCtx) {
+  return String((ctx as any)?.meta?.chatId ?? (ctx as any)?.chatId ?? "global");
+}
+
+function getOfficialLinks() {
+  const WEBSITE_URL = env("WEBSITE_URL") || env("WAOC_SITE_URL");
+  const X_URL = env("X_URL") || env("WAOC_X_URL");
+  const TG_URL = env("TG_URL") || env("WAOC_COMMUNITY_URL");
+  const ONE_MISSION_URL = env("ONE_MISSION_URL");
+  const ONE_FIELD_URL = env("ONE_FIELD_URL");
+  const MEDITATION_URL = env("MEDITATION_URL");
+
+  const links = nonEmptyList([
+    WEBSITE_URL && `Website: ${WEBSITE_URL}`,
+    X_URL && `X: ${X_URL}`,
+    TG_URL && `Telegram: ${TG_URL}`,
+    ONE_MISSION_URL && `One Mission: ${ONE_MISSION_URL}`,
+    ONE_FIELD_URL && `One Field: ${ONE_FIELD_URL}`,
+    MEDITATION_URL && `Meditation: ${MEDITATION_URL}`,
+  ]);
+
+  return {
+    WEBSITE_URL,
+    X_URL,
+    TG_URL,
+    ONE_MISSION_URL,
+    ONE_FIELD_URL,
+    MEDITATION_URL,
+    links,
+  };
 }
 
 /** Meaning intent (aligned with constraints, practical) */
@@ -92,6 +160,53 @@ function looksLikeNewsQuestion(msgLower: string) {
     msgLower.includes("有什么消息") ||
     msgLower.includes("进展") ||
     msgLower.includes("更新")
+  );
+}
+
+function looksLikeLinksQuestion(msgLower: string) {
+  return (
+    msgLower === "website" ||
+    msgLower === "site" ||
+    msgLower === "links" ||
+    msgLower.includes("website") ||
+    msgLower.includes("官网") ||
+    msgLower.includes("链接") ||
+    msgLower.includes("site")
+  );
+}
+
+function looksLikeExplicitMissionRequest(msgLower: string) {
+  return (
+    /^\/mission\b/.test(msgLower) ||
+    /^mission\b/.test(msgLower) ||
+    /^任务\b/.test(msgLower) ||
+    /generate.*mission|create.*mission|写.*任务|生成.*任务|给我.*mission/.test(msgLower)
+  );
+}
+
+function looksLikeExplicitTweetRequest(msgLower: string) {
+  return (
+    /(^|\s)tweet(\s|$)|(^|\s)thread(\s|$)|推文|发推|长推/.test(msgLower)
+  );
+}
+
+function looksLikeNarrativeRequest(msgLower: string) {
+  return /叙事|宣言|理念|哲学|philosophy|manifesto|narrative|vision/.test(
+    msgLower
+  );
+}
+
+function looksLikeValuationRequest(msgLower: string) {
+  return /估值|value|valuation/.test(msgLower);
+}
+
+function looksLikeVerificationLikeQuestion(msgLower: string) {
+  return (
+    looksLikeNewsQuestion(msgLower) ||
+    looksLikeCAQuestion(msgLower) ||
+    /price|valuation|market|chart|pump|dump|listing|partner|partnership|verify|scam|真假|今天|现在|价格|估值|市值|行情|上所|合作|验证|防骗/.test(
+      msgLower
+    )
   );
 }
 
@@ -150,7 +265,7 @@ function shouldIgnite(state: GroupState) {
   return state === "low_activity";
 }
 
-function pickIgnitionLine(lang: "en" | "zh"): string {
+function pickIgnitionLine(lang: "en" | "zh", seed: number): string {
   const poolEn = [
     "What are you shipping this week?",
     "Drop one execution update.",
@@ -166,15 +281,15 @@ function pickIgnitionLine(lang: "en" | "zh"): string {
     "现在谁在建？",
   ];
   const pool = lang === "zh" ? poolZh : poolEn;
-  const i = Math.floor(Math.random() * pool.length);
-  return pool[i];
+  return pool[Math.abs(seed) % pool.length];
 }
 
 const __igniteMap: Map<string, number> = (globalThis as any).__waocIgniteMap ||
   ((globalThis as any).__waocIgniteMap = new Map<string, number>());
 
 /* =========================
-   Deterministic Quick Replies (FACTUAL ONLY)
+   Deterministic Quick Replies
+   Only for high-certainty / truth-gate cases
 ========================= */
 
 function quickAutoReply(args: {
@@ -184,31 +299,15 @@ function quickAutoReply(args: {
 }): WaocChatData | null {
   const { raw, msg, lang } = args;
 
-  const WEBSITE_URL = env("WEBSITE_URL") || env("WAOC_SITE_URL");
-  const X_URL = env("X_URL") || env("WAOC_X_URL");
-  const TG_URL = env("TG_URL") || env("WAOC_COMMUNITY_URL");
-  const ONE_MISSION_URL = env("ONE_MISSION_URL");
-  const ONE_FIELD_URL = env("ONE_FIELD_URL");
-  const MEDITATION_URL = env("MEDITATION_URL");
-
+  const { links } = getOfficialLinks();
   const WAOC_CA_SOL = env("WAOC_CA_SOL");
   const WAOC_CA_BSC = env("WAOC_CA_BSC");
-
-  const links = nonEmptyList([
-    WEBSITE_URL && `Website: ${WEBSITE_URL}`,
-    X_URL && `X: ${X_URL}`,
-    TG_URL && `Telegram: ${TG_URL}`,
-    ONE_MISSION_URL && `One Mission: ${ONE_MISSION_URL}`,
-    ONE_FIELD_URL && `One Field: ${ONE_FIELD_URL}`,
-    MEDITATION_URL && `Meditation: ${MEDITATION_URL}`,
-  ]);
 
   const actionLinks: WaocSuggestedAction = "/links";
   const actionNone: WaocSuggestedAction = "none";
 
   // --- WAOC meaning / stands for (deterministic) ---
-  const asksMeaning = looksLikeMeaningQuestion(msg);
-  if (asksMeaning) {
+  if (looksLikeMeaningQuestion(msg)) {
     const reply =
       lang === "zh"
         ? "WAOC = We Are One Connection。\n" +
@@ -234,16 +333,7 @@ function quickAutoReply(args: {
   }
 
   // --- Website / Links ---
-  const asksLinks =
-    msg === "website" ||
-    msg === "site" ||
-    msg === "links" ||
-    msg.includes("website") ||
-    msg.includes("官网") ||
-    msg.includes("链接") ||
-    msg.includes("site");
-
-  if (asksLinks) {
+  if (looksLikeLinksQuestion(msg)) {
     return {
       reply:
         lang === "zh"
@@ -260,13 +350,10 @@ function quickAutoReply(args: {
   }
 
   // --- CA / Contract Address ---
-  const asksCA = looksLikeCAQuestion(msg) || msg === "ca" || msg.includes("ca ");
-
-  if (asksCA) {
+  if (looksLikeCAQuestion(msg) || msg === "ca" || msg.includes("ca ")) {
     const hasSol = Boolean(WAOC_CA_SOL);
     const hasBsc = Boolean(WAOC_CA_BSC);
 
-    // If configured, output. If not, TruthGate path.
     if (hasSol || hasBsc) {
       const lines: string[] = [];
       if (hasSol) lines.push(`Solana CA: ${WAOC_CA_SOL}`);
@@ -294,26 +381,6 @@ function quickAutoReply(args: {
     };
   }
 
-  // --- One Mission / leaderboard ---
-  const asksMission =
-    msg.includes("one mission") ||
-    msg === "mission" ||
-    msg.includes("leaderboard") ||
-    msg.includes("rank") ||
-    msg.includes("排行榜") ||
-    msg.includes("任务") ||
-    msg.includes("积分");
-
-  if (asksMission) {
-    return {
-      reply:
-        lang === "zh"
-          ? "One Mission 是 WAOC 的贡献引擎：完成任务 → 记分 → 上榜。"
-          : "One Mission is WAOC’s contribution engine: complete tasks → earn points → climb the leaderboard.",
-      suggestedAction: actionNone,
-    };
-  }
-
   // --- help (very short triggers) ---
   if (raw.length <= 14) {
     if (lang === "zh" && (msg === "help" || msg === "帮助")) {
@@ -331,7 +398,7 @@ function quickAutoReply(args: {
     }
   }
 
-  // --- news-ish (truth gate) ---
+  // --- news-ish / external verification truth gate ---
   if (looksLikeNewsQuestion(msg)) {
     return {
       reply:
@@ -347,7 +414,6 @@ function quickAutoReply(args: {
 
 /* =========================
    Constraint Guard (never crash)
-   Minimal fallback: only fix Identity + TruthGate, otherwise keep the model's reply.
 ========================= */
 
 function applyConstraintsOrFallback(args: {
@@ -364,23 +430,32 @@ function applyConstraintsOrFallback(args: {
   });
 
   if (check.ok) {
-    return { ok: true, data: check.data ?? data };
+    return {
+      ok: true,
+      data: {
+        reply: norm(check.data?.reply ?? data.reply),
+        suggestedAction: ensureAllowedAction(
+          check.data?.suggestedAction ?? data.suggestedAction
+        ),
+      },
+    };
   }
 
   const raw = norm(input.message);
   const msgLower = lower(raw);
   const lang: "en" | "zh" = input.lang === "zh" ? "zh" : "en";
 
-  const website = env("WEBSITE_URL") || env("WAOC_SITE_URL");
-  const tg = env("TG_URL") || env("WAOC_COMMUNITY_URL");
-  const x = env("X_URL") || env("WAOC_X_URL");
+  const { WEBSITE_URL, TG_URL, X_URL } = getOfficialLinks();
 
   const linkLine =
-    [website && `Website: ${website}`, x && `X: ${x}`, tg && `Telegram: ${tg}`]
+    [
+      WEBSITE_URL && `Website: ${WEBSITE_URL}`,
+      X_URL && `X: ${X_URL}`,
+      TG_URL && `Telegram: ${TG_URL}`,
+    ]
       .filter(Boolean)
       .join(" | ") || "";
 
-  // Meaning fallback
   if (looksLikeMeaningQuestion(msgLower)) {
     const reply =
       lang === "zh"
@@ -414,15 +489,7 @@ function applyConstraintsOrFallback(args: {
     };
   }
 
-  // Truth Gate
-  const verificationLike =
-    looksLikeNewsQuestion(msgLower) ||
-    looksLikeCAQuestion(msgLower) ||
-    /price|valuation|market|chart|pump|dump|listing|partner|partnership|verify|scam|真假|最新|今天|现在|新闻|更新|价格|估值|市值|行情|上所|合作|验证|防骗/.test(
-      msgLower
-    );
-
-  if (verificationLike) {
+  if (looksLikeVerificationLikeQuestion(msgLower)) {
     const lines =
       lang === "zh"
         ? [
@@ -447,15 +514,11 @@ function applyConstraintsOrFallback(args: {
     };
   }
 
-  // Default fallback (keep model output)
   return {
     ok: true,
     data: {
-      reply: data.reply || (lang === "zh" ? "收到。" : "Got it."),
-      suggestedAction:
-        data.suggestedAction === "/links" || data.suggestedAction === "none"
-          ? data.suggestedAction
-          : "none",
+      reply: norm(data.reply) || (lang === "zh" ? "收到。" : "Got it."),
+      suggestedAction: ensureAllowedAction(data.suggestedAction),
     },
   };
 }
@@ -468,144 +531,207 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
   name: "waoc_chat_workflow",
   maxAttempts: 3,
   steps: [
+    // 1) deterministic high-certainty / truth-gate interception
+    async (ctx: WaocChatCtx) => {
+      const raw = norm(ctx.input?.message);
+      const msg = lower(raw);
+      const lang: "en" | "zh" = ctx.input?.lang === "zh" ? "zh" : "en";
+
+      const quick = quickAutoReply({ raw, msg, lang });
+      if (quick) {
+        ctx.data = applyConstraintsOrFallback({
+          data: quick,
+          input: ctx.input,
+        }).data;
+
+        // short-circuit the rest of the workflow
+        return { ok: true, stop: true } as any;
+      }
+
+      return { ok: true };
+    },
+
+    // 2) prepare prompt with real recent messages
     preparePromptStep<WaocChatInput, WaocChatData>({
       task: "waoc_chat",
-      templateVersion: 4,
+      templateVersion: WAOC_CHAT_TEMPLATE_VERSION,
       variables: (input: WaocChatInput): Record<string, string> => ({
-       message: norm(input.message),
-       context: norm(input.context ?? "general"),
-       lang: norm(input.lang ?? "en"),
-       emotionHint: norm(input.emotionHint ?? ""),
+        message: norm(input.message),
+        context: norm(input.context ?? "general"),
+        lang: norm(input.lang ?? "en"),
+        emotionHint: norm(input.emotionHint ?? ""),
+        recentMessages: norm(input.recentMessages ?? ""),
 
-       // ✅ 这里拿不到 ctx，就给空字符串（节奏引擎仍可用 ctx.meta?.recentMessages）
-       recentMessages: "",
-
-       websiteUrl: env("WEBSITE_URL") || env("WAOC_SITE_URL"),
-       tgUrl: env("TG_URL") || env("WAOC_COMMUNITY_URL"),
-       oneMissionUrl: env("ONE_MISSION_URL"),
-       oneFieldUrl: env("ONE_FIELD_URL"),
-       meditationUrl: env("MEDITATION_URL"),
-       xUrl: env("X_URL") || env("WAOC_X_URL"),
-     }),
+        websiteUrl: env("WEBSITE_URL") || env("WAOC_SITE_URL"),
+        tgUrl: env("TG_URL") || env("WAOC_COMMUNITY_URL"),
+        oneMissionUrl: env("ONE_MISSION_URL"),
+        oneFieldUrl: env("ONE_FIELD_URL"),
+        meditationUrl: env("MEDITATION_URL"),
+        xUrl: env("X_URL") || env("WAOC_X_URL"),
+      }),
     }),
 
+    // 3) model generation
     generateLLMStep<WaocChatInput, WaocChatData>(),
     parseJsonStep<WaocChatInput, WaocChatData>(),
     validateSchemaStep<WaocChatInput, WaocChatData>(waocChatValidator),
 
+    // 4) refine against upgraded action set + rules
     refineJsonStep<WaocChatInput, WaocChatData>({
-  check: (ctx) => {
-    const r: any = checkWaocChatConstraints({
-      data: ctx.data as any,
-      userMessage: ctx.input?.message,
-      lang: ctx.input?.lang,
-    });
+      check: (ctx) => {
+        const r: any = checkWaocChatConstraints({
+          data: ctx.data as any,
+          userMessage: ctx.input?.message,
+          lang: ctx.input?.lang,
+        });
 
-    return r?.ok
-      ? { ok: true, errors: [] }
-      : { ok: false, errors: [String(r?.reason || "waoc_chat_constraints_failed")] };
-  },
-  extraInstruction:
-    'Return ONLY valid JSON: {"reply":"...","suggestedAction":"..."}.\n' +
-    "- reply is required and must answer directly.\n" +
-    '- suggestedAction is optional and MUST be one of: "none", "/links", "/mission", "/rank", "/report".\n' +
-    "- WAOC MUST be expanded ONLY as 'We Are One Connection'. Never redefine the acronym.\n" +
-    "- Only if the user asks WAOC meaning/acronym/full-form, include as the FIRST LINE: 'WAOC = We Are One Connection.'\n" +
-    "- Never fabricate CA/price/news/partnership/listing. If not verifiable, say you can't verify and route to /links.\n",
-}),
+        return r?.ok
+          ? { ok: true, errors: [] }
+          : {
+              ok: false,
+              errors: [
+                String(r?.reason || "waoc_chat_constraints_failed"),
+              ],
+            };
+      },
+      extraInstruction:
+        'Return ONLY valid JSON: {"reply":"...","suggestedAction":"..."}.\n' +
+        "- reply is required and must answer directly.\n" +
+        '- suggestedAction is optional and MUST be one of: "none", "/links", "/mission", "/rank", "/report", "/builders", "/knowledge", "/growth".\n' +
+        "- WAOC MUST be expanded ONLY as 'We Are One Connection'. Never redefine the acronym.\n" +
+        "- Only if the user asks WAOC meaning/acronym/full-form, include as the FIRST LINE: 'WAOC = We Are One Connection.'\n" +
+        "- Never fabricate CA/price/news/partnership/listing. If not verifiable, say you can't verify and route to /links.\n",
+    }),
 
     parseJsonStep<WaocChatInput, WaocChatData>(),
     validateSchemaStep<WaocChatInput, WaocChatData>(waocChatValidator),
 
+    // 5) repair, optional routing enhancement, rhythm engine, final repair
     async (ctx: WaocChatCtx) => {
       if (!ctx.data) ctx.data = { reply: "", suggestedAction: "none" };
 
-      // ✅ (1) Minimal constraints gate (do not overwrite unless needed)
-      ctx.data = applyConstraintsOrFallback({ data: ctx.data, input: ctx.input }).data;
+      ctx.data = applyConstraintsOrFallback({
+        data: ctx.data,
+        input: ctx.input,
+      }).data;
 
       const raw = norm(ctx.input.message);
       const msg = lower(raw);
       const lang: "en" | "zh" = ctx.input.lang === "zh" ? "zh" : "en";
 
-      // ✅ (2) Deterministic factual quick replies
-      const quick = quickAutoReply({ raw, msg, lang });
-      if (quick) {
-        ctx.data = applyConstraintsOrFallback({ data: quick, input: ctx.input }).data;
-        return { ok: true };
-      }
-
-      // ✅ (3) Router: forward certain intents to other tasks/templates
-      const routes: Array<{ hit: (s: string) => boolean; task: string }> = [
-        { hit: (s) => /估值|value|valuation/.test(s), task: "waoc_brain" },
-        { hit: (s) => /叙事|宣言|理念|哲学|philosophy|manifesto|narrative|vision/.test(s), task: "waoc_narrative" },
-        { hit: (s) => /mission|任务|排行榜|leaderboard|rank/.test(s), task: "mission" },
-        { hit: (s) => /tweet|推文|发推|x\.com|thread/.test(s), task: "tweet" },
+      // ---- selective routing enhancement
+      // Keep waoc_chat as primary brain. Route only when very explicit.
+      const routes: Array<{
+        hit: (s: string) => boolean;
+        task: string;
+        mapInput: () => any;
+      }> = [
+        {
+          hit: (s) => looksLikeValuationRequest(s),
+          task: "waoc_brain",
+          mapInput: () => ({ question: raw, lang }),
+        },
+        {
+          hit: (s) => looksLikeNarrativeRequest(s),
+          task: "waoc_narrative",
+          mapInput: () => ({ topic: raw, depth: "short", lang }),
+        },
+        {
+          hit: (s) => looksLikeExplicitTweetRequest(s),
+          task: "tweet",
+          mapInput: () => ({ message: raw, lang }),
+        },
+        {
+          hit: (s) => looksLikeExplicitMissionRequest(s),
+          task: "mission",
+          mapInput: () => ({ message: raw, lang }),
+        },
       ];
 
       const match = routes.find((r) => r.hit(msg));
+
       if (match) {
         try {
-          const r = await runTask(
-            match.task,
-            match.task === "waoc_brain"
-              ? { question: raw, lang: ctx.input.lang ?? "en" }
-              : match.task === "waoc_narrative"
-              ? { topic: raw, depth: "short", lang: ctx.input.lang ?? "en" }
-              : { message: raw, lang: ctx.input.lang ?? "en" },
-            { templateVersion: 4 }
-          );
+          const r = await runTask(match.task, match.mapInput(), {
+            templateVersion: WAOC_CHAT_TEMPLATE_VERSION,
+          });
 
           if (r?.success) {
-            const answer =
-              (r.data?.reply ??
+            const answer = norm(
+              r.data?.reply ??
                 r.data?.answer ??
                 r.data?.content ??
                 r.data?.text ??
-                "").toString().trim();
+                ""
+            );
 
             if (answer) {
               const next: WaocChatData = {
                 ...ctx.data,
                 reply: answer,
-                suggestedAction: ctx.data?.suggestedAction ?? "none",
+                suggestedAction: ensureAllowedAction(
+                  r.data?.suggestedAction ?? ctx.data?.suggestedAction ?? "none"
+                ),
               };
 
               if (Array.isArray(r.data?.links) && r.data.links.length) {
                 next.suggestedAction = "/links";
               }
 
-              ctx.data = applyConstraintsOrFallback({ data: next, input: ctx.input }).data;
+              ctx.data = applyConstraintsOrFallback({
+                data: next,
+                input: ctx.input,
+              }).data;
             }
           }
         } catch {
-          ctx.data = applyConstraintsOrFallback({ data: ctx.data, input: ctx.input }).data;
+          ctx.data = applyConstraintsOrFallback({
+            data: ctx.data,
+            input: ctx.input,
+          }).data;
         }
       }
 
-      // ✅ (4) Rhythm Control Engine (ignite only on low_activity + cooldown)
+      // ---- rhythm control engine
       try {
-        const recentMessages = String((ctx as any)?.recentMessages ?? (ctx as any)?.meta?.recentMessages ?? "");
+        const recentMessages = getRecentMessages(ctx);
         const state = inferGroupState(recentMessages);
 
-        // never ignite in these states
-        if (state !== "conflict" && state !== "fud_risk" && state !== "high_noise" && state !== "hype_overheat") {
+        if (
+          state !== "conflict" &&
+          state !== "fud_risk" &&
+          state !== "high_noise" &&
+          state !== "hype_overheat"
+        ) {
           if (shouldIgnite(state)) {
-            const chatId = String((ctx as any)?.meta?.chatId ?? (ctx as any)?.chatId ?? "global");
+            const chatId = getChatId(ctx);
             const key = `waoc:ignite:last:${chatId}`;
 
             const now = Date.now();
-            const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+            const COOLDOWN_MS = 5 * 60 * 1000;
             const last = Number(__igniteMap.get(key) || 0);
             const cooldownOk = !last || now - last >= COOLDOWN_MS;
 
             if (cooldownOk) {
-              const ignition = pickIgnitionLine(lang);
+              const seedBase = String(chatId)
+                .split("")
+                .reduce((a, c) => a + c.charCodeAt(0), 0);
+              const seed = seedBase + Math.floor(now / COOLDOWN_MS);
+              const ignition = pickIgnitionLine(lang, seed);
+
               const next: WaocChatData = {
                 ...ctx.data,
                 reply: `${norm(ctx.data?.reply)}\n${ignition}`.trim(),
-                suggestedAction: (ctx.data?.suggestedAction ?? "none") as any,
+                suggestedAction: ensureAllowedAction(
+                  ctx.data?.suggestedAction ?? "none"
+                ),
               };
-              ctx.data = applyConstraintsOrFallback({ data: next, input: ctx.input }).data;
+
+              ctx.data = applyConstraintsOrFallback({
+                data: next,
+                input: ctx.input,
+              }).data;
+
               __igniteMap.set(key, now);
             }
           }
@@ -614,8 +740,11 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         // never break chat
       }
 
-      // ✅ Final guarantee (minimal)
-      ctx.data = applyConstraintsOrFallback({ data: ctx.data, input: ctx.input }).data;
+      ctx.data = applyConstraintsOrFallback({
+        data: ctx.data,
+        input: ctx.input,
+      }).data;
+
       return { ok: true };
     },
   ],
