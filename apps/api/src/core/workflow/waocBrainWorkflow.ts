@@ -1,3 +1,5 @@
+// apps/api/src/core/workflows/waoc_brain.workflow.ts
+
 import type { WorkflowContext } from "./types.js";
 import type { WorkflowDefinition } from "./engine.js";
 
@@ -8,47 +10,160 @@ import { validateSchemaStep } from "./steps/validateSchemaStep.js";
 import { refineJsonStep } from "./steps/refineJsonStep.js";
 
 import { waocBrainValidator } from "../validators/waocBrainValidator.js";
+import { checkWaocBrainConstraints } from "../constraints/waocBrainConstraints.js";
 import { registerWorkflow } from "./registry.js";
 
-/* =========================
-   Types
-========================= */
+export type WaocBrainPhase =
+  | "cold_start"
+  | "early_growth"
+  | "stable_engagement"
+  | "fatigue"
+  | "fragmented"
+  | "conflict"
+  | "mission_ready"
+  | "dormant";
+
+export type WaocBrainMomentum =
+  | "rising"
+  | "stable"
+  | "weakening"
+  | "dormant"
+  | "fake_active";
+
+export type WaocBrainPosture =
+  | "silent_watch"
+  | "gentle_activation"
+  | "mission_push"
+  | "social_repair"
+  | "safe_mode";
+
+export type WaocBrainEmotion =
+  | "calm"
+  | "curious"
+  | "focused"
+  | "excited"
+  | "confused"
+  | "conflict";
+
+export type WaocBrainMissionType =
+  | "activate"
+  | "connect"
+  | "retain"
+  | "guide"
+  | "cool_down"
+  | "mission_launch"
+  | "observe";
+
+export type WaocBrainAction =
+  | "stay_quiet"
+  | "welcome_new_member"
+  | "ask_open_question"
+  | "summarize_thread"
+  | "nudge_core_member"
+  | "connect_members"
+  | "launch_micro_mission"
+  | "amplify_builder_signal"
+  | "elevate_civilization_narrative"
+  | "cool_down_thread"
+  | "escalate_to_human";
+
+export type WaocBrainPriority = "low" | "medium" | "high";
+export type WaocBrainSurface = "none" | "public" | "private" | "human_review";
 
 export type WaocBrainInput = {
-  question: string;
-  lang?: "en" | "zh";
+  communityId?: string;
+  communityName?: string;
+  communityType?:
+    | "general"
+    | "builder"
+    | "social"
+    | "support"
+    | "announcement"
+    | "governance"
+    | "partner";
+  channelType?: "group" | "channel" | "forum" | "feed" | "dm" | "unknown";
+  platform: "telegram" | "discord" | "slack" | "x" | "web";
+  resolvedLanguage: "en" | "zh" | "mixed";
+  communityStage?: WaocBrainPhase;
+  metrics?: {
+    messageCount?: number;
+    activeUserCount?: number;
+    newMemberCount?: number;
+    builderDensity?: number;
+    tensionLevel?: number;
+    missionReadiness?: number;
+    botExposureRisk?: number;
+  };
+  candidates?: {
+    targetUserIds?: number[];
+    silentCoreUserIds?: number[];
+    topContributorUserIds?: number[];
+  };
+  summaries?: {
+    recentThreadSummary?: string;
+    notableTopics?: string[];
+    notes?: string[];
+  };
+  recentInterventions?: Array<{
+    action: WaocBrainAction;
+    ts?: number;
+    outcome?: string;
+  }>;
+  riskContext?: {
+    hasConflictRisk?: boolean;
+    hasSafetyAmbiguity?: boolean;
+    hasTrustRisk?: boolean;
+  };
+  timeContext?: {
+    windowLabel?: string;
+    recentWindowMs?: number;
+    comparisonWindowMs?: number;
+  };
+  notes?: string[];
 };
 
 export type WaocBrainData = {
-  answer: string;
-  links?: string[];
+  phase: WaocBrainPhase;
+  momentum: WaocBrainMomentum;
+  posture: WaocBrainPosture;
+  emotion: WaocBrainEmotion;
+  missionType: WaocBrainMissionType;
+  action: WaocBrainAction;
+  confidence: number;
+  summary: string;
+  reasons: string[];
+  riskNotes: string[];
+  targetUserIds: number[];
+  draftMessage: string;
+  executionHints: {
+    priority: WaocBrainPriority;
+    timing: string;
+    surface: WaocBrainSurface;
+    style: string;
+    goal: string;
+  };
 };
 
 type Ctx = WorkflowContext<WaocBrainInput, WaocBrainData> & {
   templateVersion: number;
 };
 
-/* =========================
-   Constraints
-========================= */
-
-function checkConstraints(data: WaocBrainData): { ok: boolean; errors: string[] } {
-  const errors: string[] = [];
-
-  if (!(data?.answer ?? "").trim()) {
-    errors.push("answer required");
-  }
-
-  if (data?.links && data.links.length > 6) {
-    errors.push("links max 6");
-  }
-
-  return { ok: errors.length === 0, errors };
-}
-
-/* =========================
-   Workflow Definition
-========================= */
+const REFINE_INSTRUCTION = [
+  "Return ONLY valid JSON matching the waocBrain output schema.",
+  "Do not add extra fields.",
+  "The action field must be EXACTLY one of these enum values:",
+  "stay_quiet, welcome_new_member, ask_open_question, summarize_thread, nudge_core_member, connect_members, launch_micro_mission, amplify_builder_signal, elevate_civilization_narrative, cool_down_thread, escalate_to_human.",
+  "Do not invent synonyms, paraphrases, combined actions, or alternative labels for action.",
+  "The missionType field must be EXACTLY one of these enum values:",
+  "activate, connect, retain, guide, cool_down, mission_launch, observe.",
+  "If the previous action is invalid or unjustified, replace it with the single closest valid enum value.",
+  "Prefer conservative valid actions when uncertain.",
+  "Ensure action, missionType, targetUserIds, draftMessage, and executionHints are internally consistent.",
+  "For stay_quiet and escalate_to_human, draftMessage must be empty.",
+  "For nudge_core_member and connect_members, targetUserIds must be present and valid.",
+  "For public actions, executionHints.surface must be public.",
+  "For targeted actions, executionHints.surface must be private.",
+].join(" ");
 
 export const waocBrainWorkflowDef: WorkflowDefinition<Ctx> = {
   name: "waoc_brain_workflow",
@@ -56,75 +171,50 @@ export const waocBrainWorkflowDef: WorkflowDefinition<Ctx> = {
   steps: [
     preparePromptStep<WaocBrainInput, WaocBrainData>({
       task: "waoc_brain",
-      templateVersion: 1,
+      templateVersion: 31,
       variables: (input) => ({
-        question: input.question,
-        lang: input.lang ?? "en"
-      })
+        input: JSON.stringify(input, null, 2),
+      }),
     }),
 
     generateLLMStep<WaocBrainInput, WaocBrainData>(),
+
     parseJsonStep<WaocBrainInput, WaocBrainData>(),
 
     validateSchemaStep<WaocBrainInput, WaocBrainData>(waocBrainValidator),
 
     refineJsonStep<WaocBrainInput, WaocBrainData>({
-      check: (ctx) => checkConstraints(ctx.data as any),
-      extraInstruction:
-        "Return ONLY JSON. Provide a clear, practical answer. links field is optional."
+      check: (ctx) =>
+        checkWaocBrainConstraints(
+          ctx.data as WaocBrainData,
+          ctx.input as WaocBrainInput
+        ),
+      extraInstruction: REFINE_INSTRUCTION,
     }),
 
     parseJsonStep<WaocBrainInput, WaocBrainData>(),
+
     validateSchemaStep<WaocBrainInput, WaocBrainData>(waocBrainValidator),
 
-    /* =========================
-       Final Step: Inject Official Links
-    ========================== */
-
     async (ctx: Ctx) => {
-      const r = checkConstraints(ctx.data as any);
-      if (!r.ok) {
-        return { ok: false, error: r.errors };
+      const result = checkWaocBrainConstraints(
+        ctx.data as WaocBrainData,
+        ctx.input as WaocBrainInput
+      );
+
+      if (!result.ok) {
+        return {
+          ok: false,
+          error: result.errors,
+        };
       }
-
-      // 防止 TS 报 ctx.data undefined
-      if (!ctx.data) {
-        return { ok: false, error: ["internal: data undefined"] };
-      }
-
-      const {
-        WAOC_SITE_URL,
-        WAOC_COMMUNITY_URL,
-        ONE_MISSION_URL,
-        ONE_FIELD_URL
-      } = process.env;
-
-      const question = (ctx.input.question || "").toLowerCase();
-
-      const officialLinks: string[] = [];
-
-      // 根据问题语义简单判断
-      if (question.includes("mission") && ONE_MISSION_URL) {
-        officialLinks.push(ONE_MISSION_URL);
-      }
-
-      if (question.includes("field") && ONE_FIELD_URL) {
-        officialLinks.push(ONE_FIELD_URL);
-      }
-
-      // 默认永远附带官网 + 社区
-      if (WAOC_SITE_URL) officialLinks.push(WAOC_SITE_URL);
-      if (WAOC_COMMUNITY_URL) officialLinks.push(WAOC_COMMUNITY_URL);
-
-      // ✅ 完全覆盖模型生成的 links（不 merge）
-      ctx.data.links = [...new Set(officialLinks)].slice(0, 3);
 
       return { ok: true };
-    }
-  ]
+    },
+  ],
 };
 
 registerWorkflow({
   task: "waoc_brain",
-  def: waocBrainWorkflowDef as any
+  def: waocBrainWorkflowDef as any,
 });

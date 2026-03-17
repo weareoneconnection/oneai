@@ -2,9 +2,136 @@
   "$id": "waocBrainInput",
   "type": "object",
   "additionalProperties": false,
-  "required": ["question"],
+  "required": ["platform", "resolvedLanguage"],
   "properties": {
-    "question": { "type": "string", "minLength": 2, "maxLength": 4000 },
-    "lang": { "type": "string", "enum": ["en", "zh"], "default": "en" }
+    "communityId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "communityName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "communityType": {
+      "type": "string",
+      "enum": ["general", "builder", "social", "support", "announcement", "governance", "partner"]
+    },
+    "channelType": {
+      "type": "string",
+      "enum": ["group", "channel", "forum", "feed", "dm", "unknown"]
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["telegram", "discord", "slack", "x", "web"]
+    },
+    "resolvedLanguage": {
+      "type": "string",
+      "enum": ["en", "zh", "mixed"]
+    },
+    "communityStage": {
+      "type": "string",
+      "enum": ["cold_start", "early_growth", "stable_engagement", "fatigue", "fragmented", "conflict", "mission_ready", "dormant"]
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "messageCount": { "type": "number", "minimum": 0 },
+        "activeUserCount": { "type": "number", "minimum": 0 },
+        "newMemberCount": { "type": "number", "minimum": 0 },
+        "builderDensity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "tensionLevel": { "type": "number", "minimum": 0, "maximum": 1 },
+        "missionReadiness": { "type": "number", "minimum": 0, "maximum": 1 },
+        "botExposureRisk": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "candidates": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "targetUserIds": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "silentCoreUserIds": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "topContributorUserIds": {
+          "type": "array",
+          "items": { "type": "integer" }
+        }
+      }
+    },
+    "summaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "recentThreadSummary": { "type": "string", "minLength": 1 },
+        "notableTopics": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "recentInterventions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "stay_quiet",
+              "welcome_new_member",
+              "ask_open_question",
+              "summarize_thread",
+              "nudge_core_member",
+              "connect_members",
+              "launch_micro_mission",
+              "amplify_builder_signal",
+              "elevate_civilization_narrative",
+              "cool_down_thread",
+              "escalate_to_human"
+            ]
+          },
+          "ts": { "type": "integer", "minimum": 0 },
+          "outcome": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "riskContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "hasConflictRisk": { "type": "boolean" },
+        "hasSafetyAmbiguity": { "type": "boolean" },
+        "hasTrustRisk": { "type": "boolean" }
+      }
+    },
+    "timeContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "windowLabel": { "type": "string", "minLength": 1 },
+        "recentWindowMs": { "type": "integer", "minimum": 0 },
+        "comparisonWindowMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
   }
 }

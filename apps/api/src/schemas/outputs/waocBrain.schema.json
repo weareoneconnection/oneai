@@ -2,13 +2,124 @@
   "$id": "waocBrainOutput",
   "type": "object",
   "additionalProperties": false,
-  "required": ["answer"],
+  "required": [
+    "phase",
+    "momentum",
+    "posture",
+    "emotion",
+    "missionType",
+    "action",
+    "confidence",
+    "summary",
+    "reasons",
+    "riskNotes",
+    "targetUserIds",
+    "draftMessage",
+    "executionHints"
+  ],
   "properties": {
-    "answer": { "type": "string" },
-    "links": {
+    "phase": {
+      "type": "string",
+      "enum": [
+        "cold_start",
+        "early_growth",
+        "stable_engagement",
+        "fatigue",
+        "fragmented",
+        "conflict",
+        "mission_ready",
+        "dormant"
+      ]
+    },
+    "momentum": {
+      "type": "string",
+      "enum": ["rising", "stable", "weakening", "dormant", "fake_active"]
+    },
+    "posture": {
+      "type": "string",
+      "enum": ["silent_watch", "gentle_activation", "mission_push", "social_repair", "safe_mode"]
+    },
+    "emotion": {
+      "type": "string",
+      "enum": ["calm", "curious", "focused", "excited", "confused", "conflict"]
+    },
+    "missionType": {
+      "type": "string",
+      "enum": ["activate", "connect", "retain", "guide", "cool_down", "mission_launch", "observe"]
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "stay_quiet",
+        "welcome_new_member",
+        "ask_open_question",
+        "summarize_thread",
+        "nudge_core_member",
+        "connect_members",
+        "launch_micro_mission",
+        "amplify_builder_signal",
+        "elevate_civilization_narrative",
+        "cool_down_thread",
+        "escalate_to_human"
+      ]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reasons": {
       "type": "array",
-      "maxItems": 6,
-      "items": { "type": "string" }
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "riskNotes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "targetUserIds": {
+      "type": "array",
+      "items": { "type": "integer" }
+    },
+    "draftMessage": {
+      "type": "string"
+    },
+    "executionHints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["priority", "timing", "surface", "style", "goal"],
+      "properties": {
+        "priority": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "timing": {
+          "type": "string",
+          "minLength": 1
+        },
+        "surface": {
+          "type": "string",
+          "enum": ["none", "public", "private", "human_review"]
+        },
+        "style": {
+          "type": "string",
+          "minLength": 1
+        },
+        "goal": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     }
   }
 }
