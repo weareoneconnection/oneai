@@ -20,7 +20,7 @@ import {
    Constants
 ========================= */
 
-const WAOC_CHAT_TEMPLATE_VERSION = 8;
+const WAOC_CHAT_TEMPLATE_VERSION = 4;
 
 const ALLOWED_ACTIONS: WaocSuggestedAction[] = [
   "none",
