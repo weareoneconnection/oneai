@@ -33,8 +33,8 @@ const ALLOWED_ACTIONS: WaocSuggestedAction[] = [
   "/growth",
 ];
 
-const COORDINATION_GAP_APPEND_RATE = 0.2;
-const MOMENTUM_APPEND_RATE = 0.16;
+const COORDINATION_GAP_APPEND_RATE = 0.18;
+const MOMENTUM_APPEND_RATE = 0.14;
 const LIGHT_REDIRECT_RATE = 0.12;
 
 /* =========================
@@ -92,7 +92,10 @@ type WaocChatCtx = WorkflowContext<WaocChatInput, WaocChatData> & {
 type CommunitySignals = {
   meaningSignal: boolean;
   builderSignal: boolean;
+  contributorSignal: boolean;
+  collaborationSignal: boolean;
   missionSignal: boolean;
+  missionOpportunitySignal: boolean;
   knowledgeSignal: boolean;
   insightSignal: boolean;
   growthSignal: boolean;
@@ -111,6 +114,7 @@ type CommunitySignals = {
   pricingSignal: boolean;
   capabilityQuestionSignal: boolean;
   communityIdentityQuestionSignal: boolean;
+  directQuestionSignal: boolean;
   waocExplicitSignal: boolean;
 };
 
@@ -154,6 +158,8 @@ type InferredRoomState =
   | "mixed"
   | "tense";
 
+type ResponseDepth = "minimal" | "normal" | "full";
+
 type NetworkContext = {
   builderDensity: number;
   missionMomentum: number;
@@ -187,6 +193,17 @@ type CoordinationIntelligence = {
   shouldLightRedirect: boolean;
   shouldAvoidRouting: boolean;
   coordinationPriority: "low" | "medium" | "high";
+  responseDepth: ResponseDepth;
+  operatorMode:
+    | "chat"
+    | "question"
+    | "builder"
+    | "contributor"
+    | "mission"
+    | "onboarding"
+    | "knowledge"
+    | "growth"
+    | "noise";
 };
 
 /* =========================
@@ -455,6 +472,16 @@ function looksLikeCommunityIdentityQuestion(msgLower: string) {
   );
 }
 
+function looksLikeDirectQuestion(msgRaw: string) {
+  const msg = norm(msgRaw);
+  const m = lower(msgRaw);
+  return (
+    msg.includes("?") ||
+    /^(what|how|why|who|when|where|which|can|should|is|are|do|does)\b/.test(m) ||
+    /^(什么|怎么|为什么|谁|哪里|哪个|是否|能不能|是不是)/.test(m)
+  );
+}
+
 /* =========================
    Community Signals
 ========================= */
@@ -474,13 +501,28 @@ function detectCommunitySignals(
       joined
     );
 
+  const contributorSignal =
+    /shipped|deployed|delivered|completed|finished|launched|made this|pushed|updated|已完成|已经部署|交付了|上线了|做完了|我做了|我更新了/.test(
+      joined
+    );
+
+  const collaborationSignal =
+    /anyone interested|looking for|need help|contributors|collaborate|work together|一起做|一起搞|一起做这个|找人一起|需要帮手/.test(
+      joined
+    );
+
   const missionSignal =
     /mission|task|objective|execute|execution|deliver|milestone|任务|目标|执行|交付|里程碑|落地/.test(
       joined
     );
 
+  const missionOpportunitySignal =
+    /someone should|we should|needs to be done|worth doing|值得做|应该做|有人来做|需要有人做|可以搞一个/.test(
+      joined
+    );
+
   const knowledgeSignal =
-    /guide|faq|playbook|template|docs|documentation|lesson|framework|strategy|method|经验|方法|文档|指南|模板|框架/.test(
+    /guide|faq|playbook|template|docs|documentation|lesson|framework|strategy|method|经验|方法|文档|指南|模板|框架|原理|怎么运作|如何工作/.test(
       joined
     );
 
@@ -499,9 +541,8 @@ function detectCommunitySignals(
       joined
     );
 
-  const rankingSignal = /rank|ranking|leaderboard|score|points|排行榜|排名|积分/.test(
-    joined
-  );
+  const rankingSignal =
+    /rank|ranking|leaderboard|score|points|排行榜|排名|积分/.test(joined);
 
   const verificationSignal = looksLikeVerificationLikeQuestion(msg);
 
@@ -514,7 +555,7 @@ function detectCommunitySignals(
     /idiot|stupid|trash|fuck|傻逼|滚|闭嘴|骗子|诈骗|吵|撕|喷/.test(joined);
 
   const noiseSignal =
-    /airdrop|ref|join now|free|claim|moon|x10|x100|梭哈|空投|暴涨|起飞/.test(
+    /airdrop|ref|join now|free|claim|moon|x10|x100|梭哈|空投|暴涨|起飞|wen moon|to the moon/.test(
       joined
     );
 
@@ -548,14 +589,17 @@ function detectCommunitySignals(
   const capabilityQuestionSignal = looksLikeCapabilityQuestion(msg);
   const communityIdentityQuestionSignal =
     looksLikeCommunityIdentityQuestion(msg);
-  const waocExplicitSignal = /\bwaoc\b|we are one connection|WAOC|We Are One Connection/.test(
-    messageRaw
-  );
+  const directQuestionSignal = looksLikeDirectQuestion(messageRaw);
+  const waocExplicitSignal =
+    /\bwaoc\b|we are one connection|WAOC|We Are One Connection/.test(messageRaw);
 
   return {
     meaningSignal,
     builderSignal,
+    contributorSignal,
+    collaborationSignal,
     missionSignal,
+    missionOpportunitySignal,
     knowledgeSignal,
     insightSignal,
     growthSignal,
@@ -574,6 +618,7 @@ function detectCommunitySignals(
     pricingSignal,
     capabilityQuestionSignal,
     communityIdentityQuestionSignal,
+    directQuestionSignal,
     waocExplicitSignal,
   };
 }
@@ -680,7 +725,7 @@ function inferNetworkContext(
 }
 
 /* =========================
-   Room / Momentum Inference
+   Room / Momentum / Depth
 ========================= */
 
 function inferRoomState(
@@ -767,6 +812,58 @@ function inferConversationMomentum(
   return "drifting";
 }
 
+function inferResponseDepth(
+  signals: CommunitySignals,
+  roomState: InferredRoomState,
+  momentum: ConversationMomentum
+): ResponseDepth {
+  if (
+    signals.directQuestionSignal ||
+    signals.knowledgeSignal ||
+    signals.communityIdentityQuestionSignal ||
+    signals.meaningSignal
+  ) {
+    return "full";
+  }
+
+  if (
+    signals.builderSignal ||
+    signals.missionSignal ||
+    signals.missionOpportunitySignal ||
+    signals.contributorSignal ||
+    signals.collaborationSignal ||
+    signals.orientationSignal ||
+    signals.growthSignal
+  ) {
+    return "normal";
+  }
+
+  if (
+    roomState === "noisy" ||
+    roomState === "tense" ||
+    momentum === "repetitive" ||
+    momentum === "cooling" ||
+    signals.noiseSignal
+  ) {
+    return "minimal";
+  }
+
+  return "minimal";
+}
+
+function inferOperatorMode(signals: CommunitySignals): CoordinationIntelligence["operatorMode"] {
+  if (signals.noiseSignal) return "noise";
+  if (signals.orientationSignal || signals.newcomerSignal) return "onboarding";
+  if (signals.knowledgeSignal || signals.meaningSignal || signals.communityIdentityQuestionSignal)
+    return "knowledge";
+  if (signals.growthSignal) return "growth";
+  if (signals.missionSignal || signals.missionOpportunitySignal) return "mission";
+  if (signals.builderSignal) return "builder";
+  if (signals.contributorSignal || signals.executionSignal) return "contributor";
+  if (signals.directQuestionSignal) return "question";
+  return "chat";
+}
+
 /* =========================
    Coordination Gap Detection
 ========================= */
@@ -793,11 +890,15 @@ function detectCoordinationGap(
     return "none";
   }
 
-  if (signals.builderSignal && !signals.missionSignal) {
+  if (signals.builderSignal && !signals.missionSignal && !signals.missionOpportunitySignal) {
     return "builder_without_mission";
   }
 
-  if (signals.missionSignal && !signals.builderSignal && network.builderDensity === 0) {
+  if (
+    (signals.missionSignal || signals.missionOpportunitySignal) &&
+    !signals.builderSignal &&
+    network.builderDensity === 0
+  ) {
     return "mission_without_owner";
   }
 
@@ -831,8 +932,9 @@ function inferPreferredAction(
   if (signals.meaningSignal) return "none";
   if (signals.capabilityQuestionSignal) return "none";
   if (signals.communityIdentityQuestionSignal) return "none";
-  if (signals.orientationSignal) return "/links";
+  if (signals.orientationSignal || signals.newcomerSignal) return "/links";
   if (signals.verificationSignal) return "/links";
+
   if (gap === "builder_without_mission") return "/mission";
   if (gap === "mission_without_owner") return "/builders";
   if (gap === "knowledge_not_captured") return "/knowledge";
@@ -841,11 +943,13 @@ function inferPreferredAction(
 
   if (signals.reportSignal) return "/report";
   if (signals.rankingSignal) return "/rank";
-  if (signals.builderQuestionSignal) return "/builders";
+  if (signals.builderQuestionSignal || signals.collaborationSignal) return "/builders";
   if (signals.growthSignal || network.coordinationState === "growth_window")
     return "/growth";
-  if (signals.missionSignal || network.missionMomentum >= 2) return "/mission";
-  if (signals.builderSignal || network.builderDensity >= 2) return "/builders";
+  if (signals.missionSignal || signals.missionOpportunitySignal || network.missionMomentum >= 2)
+    return "/mission";
+  if (signals.builderSignal || signals.contributorSignal || network.builderDensity >= 2)
+    return "/builders";
   if (
     signals.knowledgeSignal ||
     signals.insightSignal ||
@@ -887,6 +991,8 @@ function inferCoordinationIntelligence(args: {
     network
   );
   const preferredAction = inferPreferredAction(signals, network, gap);
+  const responseDepth = inferResponseDepth(signals, roomState, momentum);
+  const operatorMode = inferOperatorMode(signals);
 
   const shouldStayMinimal =
     roomState === "noisy" ||
@@ -903,7 +1009,8 @@ function inferCoordinationIntelligence(args: {
     !signals.builderSignal &&
     !signals.knowledgeSignal &&
     !signals.capabilityQuestionSignal &&
-    !signals.communityIdentityQuestionSignal;
+    !signals.communityIdentityQuestionSignal &&
+    !signals.directQuestionSignal;
 
   const shouldAvoidRouting =
     (shouldStayMinimal && preferredAction === "none") ||
@@ -929,6 +1036,8 @@ function inferCoordinationIntelligence(args: {
     shouldLightRedirect,
     shouldAvoidRouting,
     coordinationPriority,
+    responseDepth,
+    operatorMode,
   };
 }
 
@@ -940,7 +1049,10 @@ function buildSignalHint(signals: CommunitySignals, lang: "en" | "zh" | "mixed")
   const tags: string[] = [];
   if (signals.meaningSignal) tags.push("meaning_signal");
   if (signals.builderSignal) tags.push("builder_signal");
+  if (signals.contributorSignal) tags.push("contributor_signal");
+  if (signals.collaborationSignal) tags.push("collaboration_signal");
   if (signals.missionSignal) tags.push("mission_signal");
+  if (signals.missionOpportunitySignal) tags.push("mission_opportunity_signal");
   if (signals.knowledgeSignal) tags.push("knowledge_signal");
   if (signals.insightSignal) tags.push("insight_signal");
   if (signals.growthSignal) tags.push("growth_signal");
@@ -952,6 +1064,7 @@ function buildSignalHint(signals: CommunitySignals, lang: "en" | "zh" | "mixed")
   if (signals.capabilityQuestionSignal) tags.push("capability_question_signal");
   if (signals.communityIdentityQuestionSignal)
     tags.push("community_identity_question_signal");
+  if (signals.directQuestionSignal) tags.push("direct_question_signal");
   if (signals.verificationSignal) tags.push("verification_signal");
   if (signals.conflictSignal) tags.push("conflict_signal");
   if (signals.noiseSignal) tags.push("noise_signal");
@@ -975,7 +1088,7 @@ function buildRuntimeHint(
   lang: "en" | "zh" | "mixed"
 ) {
   const base =
-    `state=${network.coordinationState}, roomState=${intelligence.roomState}, momentum=${intelligence.momentum}, gap=${intelligence.gap}, preferredAction=${intelligence.preferredAction}, priority=${intelligence.coordinationPriority}, builderDensity=${network.builderDensity}, missionMomentum=${network.missionMomentum}, knowledgeDensity=${network.knowledgeDensity}, insightDensity=${network.insightDensity}, growthDensity=${network.growthDensity}, newcomerDensity=${network.newcomerDensity}, executionDensity=${network.executionDensity}, organizationDensity=${network.organizationDensity}, noiseLevel=${network.noiseLevel}`;
+    `state=${network.coordinationState}, roomState=${intelligence.roomState}, momentum=${intelligence.momentum}, gap=${intelligence.gap}, preferredAction=${intelligence.preferredAction}, priority=${intelligence.coordinationPriority}, responseDepth=${intelligence.responseDepth}, operatorMode=${intelligence.operatorMode}, builderDensity=${network.builderDensity}, missionMomentum=${network.missionMomentum}, knowledgeDensity=${network.knowledgeDensity}, insightDensity=${network.insightDensity}, growthDensity=${network.growthDensity}, newcomerDensity=${network.newcomerDensity}, executionDensity=${network.executionDensity}, organizationDensity=${network.organizationDensity}, noiseLevel=${network.noiseLevel}`;
 
   if (lang === "zh") return `\n\n运行时上下文：${base}`;
   if (lang === "mixed") return `\n\nRuntime/运行时 context: ${base}`;
@@ -1020,6 +1133,26 @@ function buildCommunityContextHint(
   if (lang === "zh") return `\n\n社区上下文：${parts}`;
   if (lang === "mixed") return `\n\nCommunity/社区 context: ${parts}`;
   return `\n\nCommunity context: ${parts}`;
+}
+
+function buildOperatorHint(
+  signals: CommunitySignals,
+  intelligence: CoordinationIntelligence,
+  lang: "en" | "zh" | "mixed"
+) {
+  const parts = [
+    `operatorMode=${intelligence.operatorMode}`,
+    `responseDepth=${intelligence.responseDepth}`,
+    `builder=${signals.builderSignal ? "1" : "0"}`,
+    `contributor=${signals.contributorSignal ? "1" : "0"}`,
+    `collaboration=${signals.collaborationSignal ? "1" : "0"}`,
+    `missionOpportunity=${signals.missionOpportunitySignal ? "1" : "0"}`,
+    `directQuestion=${signals.directQuestionSignal ? "1" : "0"}`,
+  ].join(", ");
+
+  if (lang === "zh") return `\n\n运营判断：${parts}`;
+  if (lang === "mixed") return `\n\nOperator/运营 hints: ${parts}`;
+  return `\n\nOperator hints: ${parts}`;
 }
 
 /* =========================
@@ -1244,7 +1377,10 @@ function quickAutoReply(args: {
     if (lang === "zh") {
       const lines = [
         community.communityName ? `${community.communityName} 是一个社区。` : "这是一个社区。",
-        identity || narrative || focus || "这里更适合围绕实际协作、贡献和有用讨论来理解。",
+        identity ||
+          narrative ||
+          focus ||
+          "这里更适合围绕实际协作、贡献和有用讨论来理解。",
       ].filter(Boolean);
       return { reply: lines.join("\n"), suggestedAction: "none" };
     }
@@ -1254,14 +1390,20 @@ function quickAutoReply(args: {
         community.communityName
           ? `${community.communityName} is a community.`
           : "This is a community.",
-        identity || narrative || focus || "The best way to read it is through practical coordination and participation.",
+        identity ||
+          narrative ||
+          focus ||
+          "The best way to read it is through practical coordination and participation.",
       ].filter(Boolean);
       return { reply: lines.join("\n"), suggestedAction: "none" };
     }
 
     const lines = [
       community.communityName ? `${name} is a community.` : "This is a community.",
-      identity || narrative || focus || "The best way to understand it is through practical coordination and participation.",
+      identity ||
+        narrative ||
+        focus ||
+        "The best way to understand it is through practical coordination and participation.",
     ].filter(Boolean);
 
     return { reply: lines.join("\n"), suggestedAction: "none" };
@@ -1271,7 +1413,7 @@ function quickAutoReply(args: {
     if (lang === "zh") {
       return {
         reply:
-          "我主要是帮助社区把事情往前推。\n通常包括澄清想法、降低参与门槛、串联资源，以及把有价值的话题引到合适的下一步。",
+          "我主要是帮助社区把有价值的话题往前推。\n如果这里出现比较实用的想法、builder 方向或下一步不清楚的地方，我会尽量把它说清楚一点。",
         suggestedAction: "none",
       };
     }
@@ -1279,14 +1421,14 @@ function quickAutoReply(args: {
     if (lang === "mixed") {
       return {
         reply:
-          "Mainly helping the community move things forward.\n通常是帮助澄清想法、降低参与门槛、串联资源，并把有价值的话题带到合适的下一步。",
+          "Mostly helping useful ideas move forward in the room.\n通常就是把比较有价值的想法、builder 方向，或者下一步不清楚的地方梳理得更清楚一点。",
         suggestedAction: "none",
       };
     }
 
     return {
       reply:
-        "Mainly helping the community move things forward.\nThat usually means clarifying ideas, reducing participation friction, surfacing useful resources, and helping people find the right next step.",
+        "Mostly helping useful ideas move forward in the room.\nIf something practical comes up, I can help make the next step clearer.",
       suggestedAction: "none",
     };
   }
@@ -1446,7 +1588,9 @@ function shouldOverrideWithMinimalReply(args: {
     signals.meaningSignal ||
     signals.verificationSignal ||
     signals.capabilityQuestionSignal ||
-    signals.communityIdentityQuestionSignal
+    signals.communityIdentityQuestionSignal ||
+    signals.directQuestionSignal ||
+    intelligence.responseDepth === "full"
   ) {
     return null;
   }
@@ -1462,6 +1606,16 @@ function shouldOverrideWithMinimalReply(args: {
     return currentReply || makeMinimalReply(lang, "cooling");
   }
   return null;
+}
+
+function limitReplyLines(reply: string, depth: ResponseDepth) {
+  const max = depth === "minimal" ? 3 : depth === "normal" ? 4 : 6;
+  return norm(reply)
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, max)
+    .join("\n");
 }
 
 /* =========================
@@ -1528,7 +1682,8 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
             buildSignalHint(signals, lang) +
             buildRuntimeHint(network, intelligence, lang) +
             buildInteractionHint(intelligence, lang) +
-            buildCommunityContextHint(community, lang),
+            buildCommunityContextHint(community, lang) +
+            buildOperatorHint(signals, intelligence, lang),
 
           context: norm(input.context ?? "general"),
           lang: norm(input.lang ?? "en"),
@@ -1553,6 +1708,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
 
           coordinationIntelligence: safeJson(intelligence),
           communityContext: safeJson(community),
+          detectedSignals: safeJson(signals),
         };
       },
     }),
@@ -1582,18 +1738,21 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         'Return ONLY valid JSON: {"reply":"...","suggestedAction":"..."}.\n' +
         "- reply is required and must answer directly.\n" +
         '- suggestedAction MUST be one of: "none", "/links", "/mission", "/rank", "/report", "/builders", "/knowledge", "/growth".\n' +
-        "- Think like a calm multi-community interaction engine, not only a chatbot.\n" +
+        "- Think like a calm multi-community operator-aware interaction engine, not only a chatbot.\n" +
         "- Adapt to the current community context when it is provided.\n" +
         "- Do not assume every community is WAOC.\n" +
         "- Only explain WAOC specifically when the current community context is WAOC or the user explicitly asks about WAOC.\n" +
-        "- When users ask what you can do, answer in a community-oriented way, not like a generic assistant.\n" +
+        "- Detect whether the message is casual chat, direct question, builder idea, contributor update, onboarding need, knowledge request, growth discussion, or low-signal noise.\n" +
+        "- If the user asks a direct question, answer completely enough to be useful. Do not artificially shorten real explanations.\n" +
+        "- When users ask what you can do, answer in a natural community-oriented way, not like a generic assistant.\n" +
         "- Prefer useful replies over visible replies.\n" +
         "- Respect room state and momentum when shaping the reply.\n" +
         "- In noisy, repetitive, or cooling situations, keep replies shorter and lighter.\n" +
-        "- In builder or knowledge contexts, be clearer and slightly more structured.\n" +
+        "- In builder, contributor, mission, or knowledge contexts, be clearer and slightly more structured.\n" +
         "- If there is a real coordination gap, it is acceptable to surface it briefly when useful.\n" +
         "- Do not force routing. Default to none unless the route is clearly useful.\n" +
-        "- Keep replies compact, natural, socially aware, and high-signal.\n" +
+        "- Keep replies natural, socially aware, and high-signal.\n" +
+        "- Avoid support-agent language such as 'I can help with', 'This includes', 'Feel free to ask', or 'My role is'.\n" +
         "- If WAOC is in scope, WAOC MUST be expanded ONLY as 'We Are One Connection'. Never redefine the acronym.\n" +
         "- Never fabricate CA/price/news/partnership/listing. If not verifiable, say you can't verify and route to /links.\n",
     }),
@@ -1707,7 +1866,8 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
           hit: (s) =>
             looksLikeKnowledgeIntent(s) ||
             signals.knowledgeSignal ||
-            signals.insightSignal,
+            signals.insightSignal ||
+            signals.directQuestionSignal,
           task: "knowledge_agent",
           mapInput: () => ({
             message: raw,
@@ -1720,6 +1880,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
             looksLikeBuilderIntent(s) ||
             sig.builderSignal ||
             sig.builderQuestionSignal ||
+            sig.collaborationSignal ||
             intel.gap === "mission_without_owner",
           task: "builder_agent",
           mapInput: () => ({
@@ -1811,6 +1972,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         intelligence.gap !== "none" &&
         !shouldSkipCoordinationGap(signals, msg) &&
         !intelligence.shouldStayMinimal &&
+        intelligence.responseDepth !== "full" &&
         Math.random() < COORDINATION_GAP_APPEND_RATE
       ) {
         const current = norm(ctx.data.reply);
@@ -1860,7 +2022,9 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         !signals.verificationSignal &&
         !signals.capabilityQuestionSignal &&
         !signals.communityIdentityQuestionSignal &&
+        !signals.directQuestionSignal &&
         !intelligence.shouldStayMinimal &&
+        intelligence.responseDepth !== "full" &&
         Math.random() < MOMENTUM_APPEND_RATE
       ) {
         const current = norm(ctx.data.reply);
@@ -1890,6 +2054,23 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         if (extra) {
           ctx.data.reply = appendUniqueLine(current, extra);
         }
+      }
+
+      // ---- contributor hint
+      if (
+        signals.contributorSignal &&
+        !intelligence.shouldStayMinimal &&
+        intelligence.responseDepth !== "full"
+      ) {
+        const current = norm(ctx.data.reply);
+        const extra =
+          lang === "zh"
+            ? "这给了大家一个更具体的推进点。"
+            : lang === "mixed"
+            ? "That gives people something concrete to build on.\n这给了大家一个更具体的推进点。"
+            : "That gives people something concrete to build on.";
+
+        ctx.data.reply = appendUniqueLine(current, extra);
       }
 
       // ---- cross-community hint
@@ -1931,6 +2112,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         !signals.verificationSignal &&
         !signals.capabilityQuestionSignal &&
         !signals.communityIdentityQuestionSignal &&
+        !signals.directQuestionSignal &&
         Math.random() < LIGHT_REDIRECT_RATE
       ) {
         const current = norm(ctx.data.reply);
@@ -1978,7 +2160,9 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
             !signals.verificationSignal &&
             !signals.capabilityQuestionSignal &&
             !signals.communityIdentityQuestionSignal &&
-            !intelligence.shouldStayMinimal
+            !signals.directQuestionSignal &&
+            !intelligence.shouldStayMinimal &&
+            intelligence.responseDepth !== "full"
           ) {
             const chatId = getChatId(ctx);
             const key = `waoc:ignite:last:${chatId}`;
@@ -2022,12 +2206,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
       }
 
       // ---- final compact repair
-      ctx.data.reply = norm(ctx.data.reply)
-        .split("\n")
-        .map((x) => x.trim())
-        .filter(Boolean)
-        .slice(0, 6)
-        .join("\n");
+      ctx.data.reply = limitReplyLines(ctx.data.reply, intelligence.responseDepth);
 
       ctx.data = applyConstraintsOrFallback({
         data: ctx.data,
