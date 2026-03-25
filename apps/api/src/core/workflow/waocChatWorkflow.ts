@@ -10,17 +10,32 @@ import { validateSchemaStep } from "./steps/validateSchemaStep.js";
 import { refineJsonStep } from "./steps/refineJsonStep.js";
 
 import { waocChatValidator } from "../validators/waocChatValidator.js";
-import {
-  checkWaocChatConstraints,
-  type WaocChatData,
-  type WaocSuggestedAction,
-} from "../constraints/waocChatConstraints.js";
+import { checkWaocChatConstraints } from "../constraints/waocChatConstraints.js";
 
 /* =========================
    Constants
 ========================= */
 
-const WAOC_CHAT_TEMPLATE_VERSION = 4;
+const WAOC_CHAT_TEMPLATE_VERSION =4;
+
+export type WaocSuggestedAction =
+  | "none"
+  | "/links"
+  | "/mission"
+  | "/rank"
+  | "/report"
+  | "/builders"
+  | "/knowledge"
+  | "/growth"
+  | "/news"
+  | "/price"
+  | "/x"
+  | "/web";
+
+export type WaocChatData = {
+  reply: string;
+  suggestedAction?: WaocSuggestedAction;
+};
 
 const ALLOWED_ACTIONS: WaocSuggestedAction[] = [
   "none",
@@ -31,6 +46,10 @@ const ALLOWED_ACTIONS: WaocSuggestedAction[] = [
   "/builders",
   "/knowledge",
   "/growth",
+  "/news",
+  "/price",
+  "/x",
+  "/web",
 ];
 
 const COORDINATION_GAP_APPEND_RATE = 0.14;
@@ -116,7 +135,11 @@ type OperatorMode =
   | "onboarding"
   | "knowledge"
   | "growth"
-  | "noise";
+  | "noise"
+  | "news"
+  | "price"
+  | "x"
+  | "web";
 
 type CommunitySignals = {
   meaningSignal: boolean;
@@ -146,6 +169,9 @@ type CommunitySignals = {
   systemQuestionSignal: boolean;
   directQuestionSignal: boolean;
   waocExplicitSignal: boolean;
+  newsSignal: boolean;
+  xSignal: boolean;
+  webSignal: boolean;
 };
 
 type RuntimeState =
@@ -160,7 +186,11 @@ type RuntimeState =
   | "fud_risk"
   | "calm_building"
   | "low_activity"
-  | "organization_window";
+  | "organization_window"
+  | "news_window"
+  | "price_window"
+  | "x_window"
+  | "web_window";
 
 type CoordinationGap =
   | "none"
@@ -388,11 +418,47 @@ function looksLikeNewsQuestion(msgLower: string) {
     msgLower.includes("news") ||
     msgLower.includes("latest") ||
     msgLower.includes("update") ||
+    msgLower.includes("announcement") ||
     msgLower.includes("what's new") ||
     msgLower.includes("最新") ||
+    msgLower.includes("新闻") ||
+    msgLower.includes("动态") ||
+    msgLower.includes("公告") ||
     msgLower.includes("有什么消息") ||
     msgLower.includes("进展") ||
     msgLower.includes("更新")
+  );
+}
+
+function looksLikePriceQuestion(msgLower: string) {
+  return (
+    /\bprice\b/.test(msgLower) ||
+    /\bmarket cap\b/.test(msgLower) ||
+    /\bchart\b/.test(msgLower) ||
+    /\bvaluation\b/.test(msgLower) ||
+    /\btoken price\b/.test(msgLower) ||
+    /价格|币价|行情|市值|估值|走势图/.test(msgLower)
+  );
+}
+
+function looksLikeXQuestion(msgLower: string) {
+  return (
+    /\bx\.com\b/.test(msgLower) ||
+    /\btwitter\b/.test(msgLower) ||
+    /\btweet\b/.test(msgLower) ||
+    /\baccount\b/.test(msgLower) ||
+    /推特|账号|推文|X账号|X 帐号/.test(msgLower)
+  );
+}
+
+function looksLikeWebQuestion(msgLower: string) {
+  return (
+    /\bhttps?:\/\//.test(msgLower) ||
+    /\bwebsite\b/.test(msgLower) ||
+    /\bweb page\b/.test(msgLower) ||
+    /\barticle\b/.test(msgLower) ||
+    /\blink\b/.test(msgLower) ||
+    /网页|文章|网址|链接|网站/.test(msgLower)
   );
 }
 
@@ -437,7 +503,8 @@ function looksLikeVerificationLikeQuestion(msgLower: string) {
   return (
     looksLikeNewsQuestion(msgLower) ||
     looksLikeCAQuestion(msgLower) ||
-    /price|valuation|market|chart|pump|dump|listing|partner|partnership|verify|scam|真假|今天|现在|价格|估值|市值|行情|上所|合作|验证|防骗/.test(
+    looksLikePriceQuestion(msgLower) ||
+    /market|pump|dump|listing|partner|partnership|verify|scam|真假|今天|现在|上所|合作|验证|防骗/.test(
       msgLower
     )
   );
@@ -624,8 +691,7 @@ function detectCommunitySignals(
     /who is building|who are the builders|who is the dev|谁在构建|谁在开发|有哪些 builder/.test(
       joined
     );
-  const pricingSignal =
-    /price|market cap|valuation|chart|pump|币价|市值|行情|价格/.test(joined);
+  const pricingSignal = looksLikePriceQuestion(joined);
   const capabilityQuestionSignal = looksLikeCapabilityQuestion(msg);
   const communityIdentityQuestionSignal =
     looksLikeCommunityIdentityQuestion(msg);
@@ -633,6 +699,10 @@ function detectCommunitySignals(
   const directQuestionSignal = looksLikeDirectQuestion(messageRaw);
   const waocExplicitSignal =
     /\bwaoc\b|we are one connection|WAOC|We Are One Connection/.test(messageRaw);
+
+  const newsSignal = looksLikeNewsQuestion(msg);
+  const xSignal = looksLikeXQuestion(msg);
+  const webSignal = looksLikeWebQuestion(msg);
 
   return {
     meaningSignal,
@@ -662,6 +732,9 @@ function detectCommunitySignals(
     systemQuestionSignal,
     directQuestionSignal,
     waocExplicitSignal,
+    newsSignal,
+    xSignal,
+    webSignal,
   };
 }
 
@@ -733,6 +806,14 @@ function inferNetworkContext(
 
   if (!text || text.length < 50) {
     coordinationState = "low_activity";
+  } else if (looksLikePriceQuestion(text)) {
+    coordinationState = "price_window";
+  } else if (looksLikeNewsQuestion(text)) {
+    coordinationState = "news_window";
+  } else if (looksLikeXQuestion(text)) {
+    coordinationState = "x_window";
+  } else if (looksLikeWebQuestion(text)) {
+    coordinationState = "web_window";
   } else if (noiseLevel >= 3) {
     coordinationState = "high_noise";
   } else if (
@@ -826,7 +907,6 @@ function inferConversationMomentum(
   const shortLines = lines.filter((l) => l.length <= 10).length;
 
   if (!recent || recent.length < 30) return "starting";
-
   if (signals.conflictSignal) return "drifting";
   if (network.noiseLevel >= 3) return "repetitive";
 
@@ -840,7 +920,11 @@ function inferConversationMomentum(
   if (
     network.knowledgeDensity >= 2 ||
     network.insightDensity >= 2 ||
-    network.organizationDensity >= 2
+    network.organizationDensity >= 2 ||
+    signals.newsSignal ||
+    signals.pricingSignal ||
+    signals.xSignal ||
+    signals.webSignal
   ) {
     return "focused";
   }
@@ -902,7 +986,11 @@ function inferResponseDepth(
     questionType === "capability" ||
     questionType === "growth" ||
     signals.knowledgeSignal ||
-    signals.meaningSignal
+    signals.meaningSignal ||
+    signals.newsSignal ||
+    signals.pricingSignal ||
+    signals.xSignal ||
+    signals.webSignal
   ) {
     return "full";
   }
@@ -933,6 +1021,10 @@ function inferResponseDepth(
 }
 
 function inferOperatorMode(signals: CommunitySignals, questionType: QuestionType): OperatorMode {
+  if (signals.newsSignal) return "news";
+  if (signals.pricingSignal) return "price";
+  if (signals.xSignal) return "x";
+  if (signals.webSignal) return "web";
   if (signals.noiseSignal) return "noise";
   if (signals.orientationSignal || signals.newcomerSignal) return "onboarding";
   if (
@@ -960,6 +1052,10 @@ function shouldSkipCoordinationGap(signals: CommunitySignals, msgLower: string) 
   return (
     signals.meaningSignal ||
     signals.verificationSignal ||
+    signals.newsSignal ||
+    signals.pricingSignal ||
+    signals.xSignal ||
+    signals.webSignal ||
     looksLikeMeaningQuestion(msgLower) ||
     looksLikeVerificationLikeQuestion(msgLower) ||
     looksLikeLinksQuestion(msgLower) ||
@@ -1041,6 +1137,10 @@ function inferPreferredAction(
   missionOpportunity: boolean
 ): WaocSuggestedAction {
   if (signals.meaningSignal) return "none";
+  if (signals.newsSignal) return "/news";
+  if (signals.pricingSignal) return "/price";
+  if (signals.xSignal) return "/x";
+  if (signals.webSignal) return "/web";
   if (questionType === "capability") return "none";
   if (questionType === "community") return "none";
   if (questionType === "system") return "/knowledge";
@@ -1057,11 +1157,9 @@ function inferPreferredAction(
   if (signals.reportSignal) return "/report";
   if (signals.rankingSignal) return "/rank";
   if (signals.builderQuestionSignal || signals.collaborationSignal) return "/builders";
-  if (signals.growthSignal || network.coordinationState === "growth_window")
-    return "/growth";
+  if (signals.growthSignal || network.coordinationState === "growth_window") return "/growth";
   if (missionOpportunity) return "/mission";
-  if (signals.builderSignal || signals.contributorSignal || network.builderDensity >= 2)
-    return "/builders";
+  if (signals.builderSignal || signals.contributorSignal || network.builderDensity >= 2) return "/builders";
   if (
     signals.knowledgeSignal ||
     signals.insightSignal ||
@@ -1129,6 +1227,10 @@ function inferCoordinationIntelligence(args: {
     !signals.verificationSignal &&
     !signals.builderSignal &&
     !signals.knowledgeSignal &&
+    !signals.newsSignal &&
+    !signals.pricingSignal &&
+    !signals.xSignal &&
+    !signals.webSignal &&
     !signals.capabilityQuestionSignal &&
     !signals.communityIdentityQuestionSignal &&
     !signals.systemQuestionSignal &&
@@ -1147,7 +1249,11 @@ function inferCoordinationIntelligence(args: {
     gap === "mission_without_owner" ||
     gap === "builder_without_mission" ||
     gap === "knowledge_not_captured" ||
-    missionOpportunity
+    missionOpportunity ||
+    signals.newsSignal ||
+    signals.pricingSignal ||
+    signals.xSignal ||
+    signals.webSignal
   ) {
     coordinationPriority = "high";
   }
@@ -1202,6 +1308,9 @@ function buildSignalHint(signals: CommunitySignals, lang: "en" | "zh" | "mixed")
   if (signals.selfOrganizingSignal) tags.push("self_organizing_signal");
   if (signals.pricingSignal) tags.push("pricing_signal");
   if (signals.waocExplicitSignal) tags.push("waoc_explicit_signal");
+  if (signals.newsSignal) tags.push("news_signal");
+  if (signals.xSignal) tags.push("x_signal");
+  if (signals.webSignal) tags.push("web_signal");
 
   if (!tags.length) return "";
 
@@ -1275,6 +1384,10 @@ function buildOperatorHint(
     `collaboration=${signals.collaborationSignal ? "1" : "0"}`,
     `directQuestion=${signals.directQuestionSignal ? "1" : "0"}`,
     `systemQuestion=${signals.systemQuestionSignal ? "1" : "0"}`,
+    `news=${signals.newsSignal ? "1" : "0"}`,
+    `price=${signals.pricingSignal ? "1" : "0"}`,
+    `x=${signals.xSignal ? "1" : "0"}`,
+    `web=${signals.webSignal ? "1" : "0"}`,
   ].join(", ");
 
   if (lang === "zh") return `\n\n运营判断：${parts}`;
@@ -1326,8 +1439,9 @@ function inferGroupState(recentMessagesRaw: any): GroupState {
     );
 
   if (spam) return "high_noise";
-  if (lines.length >= 15 && shortLines / Math.max(lines.length, 1) > 0.55)
+  if (lines.length >= 15 && shortLines / Math.max(lines.length, 1) > 0.55) {
     return "high_noise";
+  }
 
   if (lines.length <= 3) return "low_activity";
   return "calm_building";
@@ -1425,8 +1539,9 @@ function quickAutoReply(args: {
       return {
         reply:
           "WAOC = We Are One Connection。\n" +
-          "WAOC 代表一种关于协作、贡献与集体智能的长期愿景。\n\n" +
-          "官方入口：\n" +
+          "WAOC 代表一种关于协作、贡献与集体智能的长期愿景。\n" +
+          "这里更重视实际推进，而不只是讨论。\n" +
+          "官方入口见下方。\n" +
           (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "（暂未配置官方链接）"),
         suggestedAction: linkLines.length ? actionLinks : actionNone,
       };
@@ -1437,8 +1552,8 @@ function quickAutoReply(args: {
         reply:
           "WAOC = We Are One Connection.\n" +
           "WAOC represents a long-term vision of coordination, contribution, and collective intelligence.\n" +
-          "WAOC 代表一种关于长期协作的愿景。\n\n" +
-          "Official entry points / 官方入口：\n" +
+          "It is more about practical coordination than abstract talk.\n" +
+          "Official entry points are below.\n" +
           (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "(official links not configured yet)"),
         suggestedAction: linkLines.length ? actionLinks : actionNone,
       };
@@ -1447,8 +1562,9 @@ function quickAutoReply(args: {
     return {
       reply:
         "WAOC = We Are One Connection.\n" +
-        "WAOC represents a long-term vision of coordination, contribution, and collective intelligence.\n\n" +
-        "Official entry points:\n" +
+        "WAOC represents a long-term vision of coordination, contribution, and collective intelligence.\n" +
+        "It is more about practical coordination than abstract talk.\n" +
+        "Official entry points are below.\n" +
         (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "(official links not configured yet)"),
       suggestedAction: linkLines.length ? actionLinks : actionNone,
     };
@@ -1458,7 +1574,9 @@ function quickAutoReply(args: {
     if (lang === "zh") {
       return {
         reply:
-          "官方入口：\n" +
+          "官方入口如下。\n" +
+          "先从核心链接开始会更清楚。\n" +
+          "如果是新人，建议先看网站和社区入口。\n" +
           (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "（暂未配置链接）"),
         suggestedAction: linkLines.length ? actionLinks : actionNone,
       };
@@ -1467,7 +1585,9 @@ function quickAutoReply(args: {
     if (lang === "mixed") {
       return {
         reply:
-          "Official entry points / 官方入口：\n" +
+          "Official entry points are below.\n" +
+          "Starting from the core links is the clearest path.\n" +
+          "If you are new, begin with the site and community entry points.\n" +
           (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "(links not configured yet)"),
         suggestedAction: linkLines.length ? actionLinks : actionNone,
       };
@@ -1475,7 +1595,9 @@ function quickAutoReply(args: {
 
     return {
       reply:
-        "Official entry points:\n" +
+        "Official entry points are below.\n" +
+        "Starting from the core links is the clearest path.\n" +
+        "If you are new, begin with the site and community entry points.\n" +
         (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "(links not configured yet)"),
       suggestedAction: linkLines.length ? actionLinks : actionNone,
     };
@@ -1490,7 +1612,8 @@ function quickAutoReply(args: {
           (community.communityIdentity ||
             community.communityNarrative ||
             community.communityFocus ||
-            "这里更适合围绕实际协作、贡献和有用讨论来理解。"),
+            "这里更适合围绕实际协作、贡献和有用讨论来理解。") +
+          "\n这里更重视行动与协作。\n不是单纯的信息群。",
         suggestedAction: "none",
       };
     }
@@ -1503,7 +1626,8 @@ function quickAutoReply(args: {
           (community.communityIdentity ||
             community.communityNarrative ||
             community.communityFocus ||
-            "The best way to understand it is through practical coordination and participation."),
+            "The best way to understand it is through practical coordination and participation.") +
+          "\nIt is more action-oriented than purely informational.\nThat is usually the best lens to read it through.",
         suggestedAction: "none",
       };
     }
@@ -1515,7 +1639,8 @@ function quickAutoReply(args: {
         (community.communityIdentity ||
           community.communityNarrative ||
           community.communityFocus ||
-          "The best way to understand it is through practical coordination and participation."),
+          "The best way to understand it is through practical coordination and participation.") +
+        "\nIt is more action-oriented than purely informational.\nThat is usually the best lens to read it through.",
       suggestedAction: "none",
     };
   }
@@ -1525,8 +1650,9 @@ function quickAutoReply(args: {
       return {
         reply:
           "它更像一个协调接口。\n" +
-          "消息进来之后，会先判断这是闲聊、提问、builder 想法、入门问题，还是需要进入 knowledge / mission 这类场景。\n" +
-          "然后再决定是直接回答，还是给出更合适的下一步。",
+          "消息进来之后，会先判断是闲聊、提问、builder 想法、入门问题，还是更适合进入 knowledge / mission 场景。\n" +
+          "然后再决定是直接回答，还是给出更合适的下一步。\n" +
+          "目标是把讨论尽量推进到更清晰的行动。",
         suggestedAction: "/knowledge",
       };
     }
@@ -1535,8 +1661,9 @@ function quickAutoReply(args: {
       return {
         reply:
           "It works more like a coordination interface.\n" +
-          "A message comes in, it gets read as chat, question, builder idea, onboarding, or something that should move toward knowledge or mission.\n" +
-          "Then it decides whether to answer directly or suggest the next step.",
+          "A message gets read as chat, question, builder idea, onboarding, or something that should move toward knowledge or mission.\n" +
+          "Then it decides whether to answer directly or suggest the next useful step.\n" +
+          "The aim is to make discussion more actionable.",
         suggestedAction: "/knowledge",
       };
     }
@@ -1544,8 +1671,9 @@ function quickAutoReply(args: {
     return {
       reply:
         "It works more like a coordination interface.\n" +
-        "A message comes in, it gets read as chat, question, builder idea, onboarding, or something that should move toward knowledge or mission.\n" +
-        "Then it decides whether to answer directly or suggest the next useful step.",
+        "A message gets read as chat, question, builder idea, onboarding, or something that should move toward knowledge or mission.\n" +
+        "Then it decides whether to answer directly or suggest the next useful step.\n" +
+        "The aim is to make discussion more actionable.",
       suggestedAction: "/knowledge",
     };
   }
@@ -1555,7 +1683,9 @@ function quickAutoReply(args: {
       return {
         reply:
           "我主要是帮群里把有价值的话题往行动方向推进。\n" +
-          "比如识别 builder、串联想法、把下一步说清楚，或者在合适的时候把讨论变成 mission。",
+          "比如识别 builder、串联想法、把下一步说清楚。\n" +
+          "也会在合适的时候把讨论变成 mission。\n" +
+          "如果涉及外部信息，也可以路由到对应入口。",
         suggestedAction: "none",
       };
     }
@@ -1564,7 +1694,9 @@ function quickAutoReply(args: {
       return {
         reply:
           "Mostly helping useful ideas move toward action.\n" +
-          "I help surface builders, connect ideas, and make the next step clearer.",
+          "I help surface builders, connect ideas, and make the next step clearer.\n" +
+          "When needed, I can also route discussion toward mission, knowledge, or external info flows.\n" +
+          "That is the main operating role.",
         suggestedAction: "none",
       };
     }
@@ -1572,7 +1704,9 @@ function quickAutoReply(args: {
     return {
       reply:
         "Mostly helping useful ideas move toward action.\n" +
-        "I help surface builders, connect ideas, and make the next step clearer.",
+        "I help surface builders, connect ideas, and make the next step clearer.\n" +
+        "When needed, I can also route discussion toward mission, knowledge, or external info flows.\n" +
+        "That is the main operating role.",
       suggestedAction: "none",
     };
   }
@@ -1589,9 +1723,9 @@ function quickAutoReply(args: {
       if (lang === "zh") {
         return {
           reply:
-            "合约地址（官方配置）：\n" +
+            "以下是当前已配置的官方合约地址。\n" +
             lines.map((x) => `- ${x}`).join("\n") +
-            "\n\n⚠️ 只以官方渠道为准，别信私聊。",
+            "\n请只以官方渠道为准。\n不要相信私聊转发。",
           suggestedAction: actionLinks,
         };
       }
@@ -1599,18 +1733,18 @@ function quickAutoReply(args: {
       if (lang === "mixed") {
         return {
           reply:
-            "Contract address / 合约地址（officially configured）：\n" +
+            "These are the currently configured official contract addresses.\n" +
             lines.map((x) => `- ${x}`).join("\n") +
-            "\n\n⚠️ Only trust official channels / 只信官方渠道。",
+            "\nOnly trust official channels.\nDo not trust random DMs.",
           suggestedAction: actionLinks,
         };
       }
 
       return {
         reply:
-          "Contract address (officially configured):\n" +
+          "These are the currently configured official contract addresses.\n" +
           lines.map((x) => `- ${x}`).join("\n") +
-          "\n\n⚠️ Only trust official channels—ignore DMs.",
+          "\nOnly trust official channels.\nDo not trust random DMs.",
         suggestedAction: actionLinks,
       };
     }
@@ -1618,7 +1752,10 @@ function quickAutoReply(args: {
     if (lang === "zh") {
       return {
         reply:
-          "我不会猜或乱编合约地址。\n请以当前社区的官方渠道和置顶信息为准。（/links）",
+          "我不会猜或乱编合约地址。\n" +
+          "这类信息应只以官方渠道为准。\n" +
+          "建议查看置顶或官方入口。\n" +
+          "这里先走官方链接。",
         suggestedAction: actionLinks,
       };
     }
@@ -1626,14 +1763,20 @@ function quickAutoReply(args: {
     if (lang === "mixed") {
       return {
         reply:
-          "I won’t guess or fabricate a contract address.\n我不会乱编合约地址。\nUse official channels and pinned info for this community. (/links)",
+          "I won’t guess or fabricate a contract address.\n" +
+          "This should come only from official channels.\n" +
+          "Check pinned information or official links.\n" +
+          "Routing to official entry points is safer.",
         suggestedAction: actionLinks,
       };
     }
 
     return {
       reply:
-        "I won’t guess or fabricate a contract address.\nUse official channels and pinned info for this community. (/links)",
+        "I won’t guess or fabricate a contract address.\n" +
+        "This should come only from official channels.\n" +
+        "Check pinned information or official links.\n" +
+        "Routing to official entry points is safer.",
       suggestedAction: actionLinks,
     };
   }
@@ -1678,7 +1821,11 @@ function applyConstraintsOrFallback(args: {
     data: {
       reply:
         norm(data.reply) ||
-        (lang === "zh" ? "收到。" : lang === "mixed" ? "Got it.\n收到。" : "Got it."),
+        (lang === "zh"
+          ? "收到。\n先保留这个方向。\n需要时再继续推进。"
+          : lang === "mixed"
+          ? "Got it.\nKeeping this direction noted.\nWe can push it further when needed."
+          : "Got it.\nKeeping this direction noted.\nWe can push it further when needed."),
       suggestedAction: ensureAllowedAction(data.suggestedAction),
     },
   };
@@ -1702,20 +1849,20 @@ function makeMinimalReply(
   kind: "noise" | "tense" | "cooling"
 ): string {
   if (lang === "zh") {
-    if (kind === "noise") return "先把重点放回一个更具体的问题。";
-    if (kind === "tense") return "先冷静一下，尽量把讨论拉回事实和问题本身。";
-    return "收到，先保持简洁。";
+    if (kind === "noise") return "先把重点放回一个更具体的问题。\n现在不适合把话题继续发散。";
+    if (kind === "tense") return "先冷静一下。\n尽量把讨论拉回事实和问题本身。";
+    return "收到。\n先保持简洁。\n等信息更清楚再展开。";
   }
 
   if (lang === "mixed") {
     if (kind === "noise") return "Let’s bring this back to one concrete problem.\n先把重点拉回一个更具体的问题。";
     if (kind === "tense") return "Let’s keep this calm and grounded in facts.\n先冷静一点，回到事实本身。";
-    return "Got it.\n先保持简洁。";
+    return "Got it.\nKeeping this brief for now.\nWe can expand once the signal is clearer.";
   }
 
-  if (kind === "noise") return "Let’s bring this back to one concrete problem.";
-  if (kind === "tense") return "Let’s keep this calm and grounded in facts.";
-  return "Got it. Keeping it light.";
+  if (kind === "noise") return "Let’s bring this back to one concrete problem.\nThis is not the best moment to widen the thread.";
+  if (kind === "tense") return "Let’s keep this calm and grounded in facts.\nThat will make the discussion more useful.";
+  return "Got it.\nKeeping this brief for now.\nWe can expand once the signal is clearer.";
 }
 
 function shouldOverrideWithMinimalReply(args: {
@@ -1752,14 +1899,22 @@ function shouldOverrideWithMinimalReply(args: {
   return null;
 }
 
-function limitReplyLines(reply: string, depth: ResponseDepth) {
-  const max = depth === "minimal" ? 3 : depth === "normal" ? 4 : 6;
-  return norm(reply)
+function finalizeReplyLines(reply: string): string {
+  const lines = norm(reply)
     .split("\n")
     .map((x) => x.trim())
-    .filter(Boolean)
-    .slice(0, max)
-    .join("\n");
+    .filter(Boolean);
+
+  if (!lines.length) {
+    return "Got it.\nKeeping this simple.\nWe can refine it from here.";
+  }
+
+  const clipped = lines.slice(0, 5);
+
+  if (clipped.length >= 2) return clipped.join("\n");
+
+  const one = clipped[0];
+  return [one, "Keeping the next step clear.", "That is the main direction."].join("\n");
 }
 
 /* =========================
@@ -1788,6 +1943,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
           data: quick,
           input: ctx.input,
         }).data;
+        ctx.data.reply = finalizeReplyLines(ctx.data.reply);
         return { ok: true, stop: true } as any;
       }
 
@@ -1882,12 +2038,13 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
       },
       extraInstruction:
         'Return ONLY valid JSON: {"reply":"...","suggestedAction":"..."}.\n' +
-        "- reply is required and must answer directly.\n" +
-        '- suggestedAction MUST be one of: "none", "/links", "/mission", "/rank", "/report", "/builders", "/knowledge", "/growth".\n' +
+        '- suggestedAction MUST be one of: "none", "/links", "/mission", "/rank", "/report", "/builders", "/knowledge", "/growth", "/news", "/price", "/x", "/web".\n' +
+        "- reply is required and must directly answer the user.\n" +
+        "- Keep reply output between 2 and 5 concise lines.\n" +
         "- Think like an autonomous community coordination brain, not a generic chatbot.\n" +
-        "- Detect builder signals, contributor signals, collaboration signals, mission opportunity, and community momentum.\n" +
-        "- Distinguish system questions from community questions, capability questions, and growth questions.\n" +
-        "- If the user asks a direct question, answer clearly and completely enough to be useful. Do not artificially shorten real explanations.\n" +
+        "- Detect builder signals, contributor signals, collaboration signals, mission opportunity, community momentum, news intent, price intent, X intent, and web intent.\n" +
+        "- Distinguish system questions from community questions, capability questions, growth questions, and external information requests.\n" +
+        "- If the user asks a direct question, answer clearly and completely enough to be useful.\n" +
         "- For system questions, explain mechanism / flow / operating logic.\n" +
         "- For community questions, explain identity / focus / purpose.\n" +
         "- For capability questions, answer naturally and concretely without sounding like support documentation.\n" +
@@ -1896,6 +2053,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         "- Ask at most one follow-up question in builder mode.\n" +
         "- If a mission opportunity exists, it is acceptable to say so briefly.\n" +
         "- In growth contexts, answer practically with steps / priorities rather than vague encouragement.\n" +
+        "- For news / price / X / web requests, do not fabricate facts. If not verifiable, say so briefly and route appropriately.\n" +
         "- Prefer one concrete next step over vague motivation.\n" +
         "- Respect room state and momentum when shaping the reply.\n" +
         "- In noisy, repetitive, or cooling situations, keep replies shorter and lighter.\n" +
@@ -1903,7 +2061,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         "- Avoid support-agent or corporate language such as 'It sounds like', 'As an AI', 'I can help with', 'This includes', 'Feel free to ask', 'facilitate coordination', 'foster collaboration', 'support builders and contributors', 'unlock potential', or 'drive engagement'.\n" +
         "- Do not assume every community is WAOC.\n" +
         "- If WAOC is in scope, WAOC MUST be expanded ONLY as 'We Are One Connection'. Never redefine the acronym.\n" +
-        "- Never fabricate CA/price/news/partnership/listing. If not verifiable, say you can't verify and route to /links.\n",
+        "- Never fabricate CA/price/news/partnership/listing. If not verifiable, say you can't verify and route accordingly.\n",
     }),
 
     parseJsonStep<WaocChatInput, WaocChatData>(),
@@ -1948,10 +2106,12 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         ) => boolean;
         task: string;
         mapInput: () => any;
+        preferredAction?: WaocSuggestedAction;
       }> = [
         {
           hit: (s) => looksLikeValuationRequest(s),
           task: "waoc_brain",
+          preferredAction: "/knowledge",
           mapInput: () => ({
             question: raw,
             lang,
@@ -1962,6 +2122,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         {
           hit: (s) => looksLikeNarrativeRequest(s),
           task: "waoc_narrative",
+          preferredAction: "/knowledge",
           mapInput: () => ({
             topic: raw,
             depth: "short",
@@ -1973,6 +2134,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         {
           hit: (s) => looksLikeExplicitTweetRequest(s),
           task: "tweet",
+          preferredAction: "/growth",
           mapInput: () => ({
             message: raw,
             lang,
@@ -1983,6 +2145,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         {
           hit: (s) => looksLikeExplicitMissionRequest(s),
           task: "mission",
+          preferredAction: "/mission",
           mapInput: () => ({
             message: raw,
             lang,
@@ -1993,6 +2156,47 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         {
           hit: (s) => looksLikeReportIntent(s),
           task: "report_agent",
+          preferredAction: "/report",
+          mapInput: () => ({
+            message: raw,
+            lang,
+            communityName: community.communityName,
+          }),
+        },
+        {
+          hit: (_s, sig) => sig.newsSignal,
+          task: "news_agent",
+          preferredAction: "/news",
+          mapInput: () => ({
+            message: raw,
+            lang,
+            communityName: community.communityName,
+          }),
+        },
+        {
+          hit: (_s, sig) => sig.pricingSignal,
+          task: "price_agent",
+          preferredAction: "/price",
+          mapInput: () => ({
+            message: raw,
+            lang,
+            communityName: community.communityName,
+          }),
+        },
+        {
+          hit: (_s, sig) => sig.xSignal,
+          task: "x_agent",
+          preferredAction: "/x",
+          mapInput: () => ({
+            message: raw,
+            lang,
+            communityName: community.communityName,
+          }),
+        },
+        {
+          hit: (_s, sig) => sig.webSignal,
+          task: "web_agent",
+          preferredAction: "/web",
           mapInput: () => ({
             message: raw,
             lang,
@@ -2003,6 +2207,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
           hit: (s, sig, _net, intel) =>
             looksLikeGrowthIntent(s) || sig.growthSignal || intel.questionType === "growth",
           task: "growth_agent",
+          preferredAction: "/growth",
           mapInput: () => ({
             message: raw,
             lang,
@@ -2017,6 +2222,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
             sig.systemQuestionSignal ||
             intel.questionType === "system",
           task: "knowledge_agent",
+          preferredAction: "/knowledge",
           mapInput: () => ({
             message: raw,
             lang,
@@ -2032,6 +2238,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
             intel.missionOpportunity ||
             intel.gap === "mission_without_owner",
           task: "builder_agent",
+          preferredAction: "/builders",
           mapInput: () => ({
             message: raw,
             lang,
@@ -2066,6 +2273,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
                 reply: answer,
                 suggestedAction: ensureAllowedAction(
                   r.data?.suggestedAction ??
+                    match.preferredAction ??
                     ctx.data?.suggestedAction ??
                     intelligence.preferredAction
                 ),
@@ -2170,6 +2378,10 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         !signals.communityIdentityQuestionSignal &&
         !signals.systemQuestionSignal &&
         !signals.directQuestionSignal &&
+        !signals.newsSignal &&
+        !signals.pricingSignal &&
+        !signals.xSignal &&
+        !signals.webSignal &&
         !intelligence.shouldStayMinimal &&
         intelligence.responseDepth !== "full" &&
         Math.random() < MOMENTUM_APPEND_RATE
@@ -2210,6 +2422,10 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
       if (
         intelligence.missionOpportunity &&
         !signals.directQuestionSignal &&
+        !signals.newsSignal &&
+        !signals.pricingSignal &&
+        !signals.xSignal &&
+        !signals.webSignal &&
         !intelligence.shouldStayMinimal &&
         intelligence.responseDepth !== "full"
       ) {
@@ -2262,6 +2478,10 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         signals.selfOrganizingSignal &&
         !signals.meaningSignal &&
         !signals.verificationSignal &&
+        !signals.newsSignal &&
+        !signals.pricingSignal &&
+        !signals.xSignal &&
+        !signals.webSignal &&
         !intelligence.shouldStayMinimal &&
         network.coordinationState === "organization_window"
       ) {
@@ -2279,6 +2499,10 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
       if (
         (signals.builderSignal || signals.missionOpportunitySignal || signals.collaborationSignal) &&
         !signals.directQuestionSignal &&
+        !signals.newsSignal &&
+        !signals.pricingSignal &&
+        !signals.xSignal &&
+        !signals.webSignal &&
         !intelligence.shouldStayMinimal &&
         intelligence.responseDepth === "normal"
       ) {
@@ -2360,6 +2584,10 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
             !signals.communityIdentityQuestionSignal &&
             !signals.systemQuestionSignal &&
             !signals.directQuestionSignal &&
+            !signals.newsSignal &&
+            !signals.pricingSignal &&
+            !signals.xSignal &&
+            !signals.webSignal &&
             !intelligence.shouldStayMinimal &&
             intelligence.responseDepth !== "full"
           ) {
@@ -2404,12 +2632,15 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         // ignore
       }
 
-      ctx.data.reply = limitReplyLines(ctx.data.reply, intelligence.responseDepth);
+      ctx.data.reply = finalizeReplyLines(ctx.data.reply);
 
       ctx.data = applyConstraintsOrFallback({
         data: ctx.data,
         input: ctx.input,
       }).data;
+
+      ctx.data.reply = finalizeReplyLines(ctx.data.reply);
+      ctx.data.suggestedAction = ensureAllowedAction(ctx.data.suggestedAction ?? "none");
 
       return { ok: true };
     },

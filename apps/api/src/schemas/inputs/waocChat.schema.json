@@ -16,7 +16,7 @@
     },
     "lang": {
       "type": "string",
-      "enum": ["en", "zh"],
+      "enum": ["en", "zh", "mixed"],
       "default": "en"
     },
     "emotionHint": {
@@ -42,6 +42,81 @@
     "recentMessages": {
       "type": "string",
       "maxLength": 20000,
+      "default": ""
+    },
+    "roomState": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "quiet",
+            "active",
+            "builder_dense",
+            "newcomer_wave",
+            "noisy",
+            "mixed",
+            "tense"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "momentumHint": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "starting",
+            "building",
+            "focused",
+            "drifting",
+            "repetitive",
+            "cooling",
+            "unclear",
+            "dormant",
+            "weak",
+            "emerging",
+            "fragmented",
+            "noisy"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "communityName": {
+      "type": "string",
+      "maxLength": 200,
+      "default": ""
+    },
+    "communityIdentity": {
+      "type": "string",
+      "maxLength": 1000,
+      "default": ""
+    },
+    "communityNarrative": {
+      "type": "string",
+      "maxLength": 2000,
+      "default": ""
+    },
+    "communityFocus": {
+      "type": "string",
+      "maxLength": 1000,
+      "default": ""
+    },
+    "ecosystemContext": {
+      "type": "string",
+      "maxLength": 2000,
+      "default": ""
+    },
+    "officialLinks": {
+      "type": "string",
+      "maxLength": 3000,
       "default": ""
     }
   }

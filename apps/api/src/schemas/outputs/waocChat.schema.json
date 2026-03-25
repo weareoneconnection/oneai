@@ -6,7 +6,8 @@
   "properties": {
     "reply": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "maxLength": 800
     },
     "suggestedAction": {
       "type": "string",
@@ -18,7 +19,11 @@
         "/report",
         "/builders",
         "/knowledge",
-        "/growth"
+        "/growth",
+        "/news",
+        "/price",
+        "/x",
+        "/web"
       ]
     }
   }
