@@ -16,7 +16,7 @@ import { checkWaocChatConstraints } from "../constraints/waocChatConstraints.js"
    Constants
 ========================= */
 
-const WAOC_CHAT_TEMPLATE_VERSION =4;
+const WAOC_CHAT_TEMPLATE_VERSION = 5;
 
 export type WaocSuggestedAction =
   | "none"
@@ -51,10 +51,6 @@ const ALLOWED_ACTIONS: WaocSuggestedAction[] = [
   "/x",
   "/web",
 ];
-
-const COORDINATION_GAP_APPEND_RATE = 0.14;
-const MOMENTUM_APPEND_RATE = 0.12;
-const LIGHT_REDIRECT_RATE = 0.08;
 
 /* =========================
    Types
@@ -113,7 +109,6 @@ type WaocChatCtx = WorkflowContext<WaocChatInput, WaocChatData> & {
 };
 
 type QuestionType = "community" | "system" | "capability" | "growth" | "general";
-
 type ResponseDepth = "minimal" | "normal" | "full";
 
 type MomentumState =
@@ -140,39 +135,6 @@ type OperatorMode =
   | "price"
   | "x"
   | "web";
-
-type CommunitySignals = {
-  meaningSignal: boolean;
-  builderSignal: boolean;
-  contributorSignal: boolean;
-  collaborationSignal: boolean;
-  missionSignal: boolean;
-  missionOpportunitySignal: boolean;
-  knowledgeSignal: boolean;
-  insightSignal: boolean;
-  growthSignal: boolean;
-  reportSignal: boolean;
-  rankingSignal: boolean;
-  verificationSignal: boolean;
-  newcomerSignal: boolean;
-  conflictSignal: boolean;
-  noiseSignal: boolean;
-  crossCommunityHint: boolean;
-  operatorSignal: boolean;
-  executionSignal: boolean;
-  selfOrganizingSignal: boolean;
-  orientationSignal: boolean;
-  builderQuestionSignal: boolean;
-  pricingSignal: boolean;
-  capabilityQuestionSignal: boolean;
-  communityIdentityQuestionSignal: boolean;
-  systemQuestionSignal: boolean;
-  directQuestionSignal: boolean;
-  waocExplicitSignal: boolean;
-  newsSignal: boolean;
-  xSignal: boolean;
-  webSignal: boolean;
-};
 
 type RuntimeState =
   | "general"
@@ -218,6 +180,50 @@ type InferredRoomState =
   | "mixed"
   | "tense";
 
+type CommunityContext = {
+  communityName: string;
+  communityIdentity: string;
+  communityNarrative: string;
+  communityFocus: string;
+  ecosystemContext: string;
+  officialLinks: string;
+  isWAOC: boolean;
+  hasCommunityContext: boolean;
+};
+
+type CommunitySignals = {
+  meaningSignal: boolean;
+  builderSignal: boolean;
+  contributorSignal: boolean;
+  collaborationSignal: boolean;
+  missionSignal: boolean;
+  missionOpportunitySignal: boolean;
+  knowledgeSignal: boolean;
+  insightSignal: boolean;
+  growthSignal: boolean;
+  reportSignal: boolean;
+  rankingSignal: boolean;
+  verificationSignal: boolean;
+  newcomerSignal: boolean;
+  conflictSignal: boolean;
+  noiseSignal: boolean;
+  crossCommunityHint: boolean;
+  operatorSignal: boolean;
+  executionSignal: boolean;
+  selfOrganizingSignal: boolean;
+  orientationSignal: boolean;
+  builderQuestionSignal: boolean;
+  pricingSignal: boolean;
+  capabilityQuestionSignal: boolean;
+  communityIdentityQuestionSignal: boolean;
+  systemQuestionSignal: boolean;
+  directQuestionSignal: boolean;
+  waocExplicitSignal: boolean;
+  newsSignal: boolean;
+  xSignal: boolean;
+  webSignal: boolean;
+};
+
 type NetworkContext = {
   builderDensity: number;
   missionMomentum: number;
@@ -230,17 +236,6 @@ type NetworkContext = {
   organizationDensity: number;
   collaborationDensity: number;
   coordinationState: RuntimeState;
-};
-
-type CommunityContext = {
-  communityName: string;
-  communityIdentity: string;
-  communityNarrative: string;
-  communityFocus: string;
-  ecosystemContext: string;
-  officialLinks: string;
-  isWAOC: boolean;
-  hasCommunityContext: boolean;
 };
 
 type CoordinationIntelligence = {
@@ -259,21 +254,59 @@ type CoordinationIntelligence = {
   missionOpportunity: boolean;
 };
 
+type AiRouterIntent =
+  | "capability"
+  | "community"
+  | "system"
+  | "meaning"
+  | "links"
+  | "ca"
+  | "news"
+  | "price"
+  | "x"
+  | "web"
+  | "growth"
+  | "knowledge"
+  | "builder"
+  | "mission"
+  | "report"
+  | "ranking"
+  | "narrative"
+  | "tweet"
+  | "valuation"
+  | "general";
+
+type RouteDecision = {
+  intent: AiRouterIntent;
+  confidence: number;
+  task?: string;
+  suggestedAction: WaocSuggestedAction;
+  reason: string;
+};
+
 /* =========================
    Helpers
 ========================= */
 
-function norm(s: any) {
-  return String(s ?? "").trim();
+function norm(v: unknown) {
+  return String(v ?? "").trim();
 }
 
-function lower(s: any) {
-  return norm(s).toLowerCase();
+function lower(v: unknown) {
+  return norm(v).toLowerCase();
 }
 
 function env(name: string) {
   const v = process.env[name];
   return v ? String(v).trim() : "";
+}
+
+function safeJson(value: any) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
 }
 
 function nonEmptyList(xs: Array<string | false | null | undefined>) {
@@ -288,12 +321,13 @@ function ensureAllowedAction(v: any): WaocSuggestedAction {
   return isAllowedAction(v) ? v : "none";
 }
 
-function safeJson(value: any) {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return "";
-  }
+function toConstraintLang(
+  lang: "en" | "zh" | "mixed" | undefined
+): "en" | "zh" | undefined {
+  if (lang === "zh") return "zh";
+  if (lang === "en") return "en";
+  if (lang === "mixed") return "en";
+  return undefined;
 }
 
 function getRecentMessages(ctx: WaocChatCtx) {
@@ -309,14 +343,205 @@ function getChatId(ctx: WaocChatCtx) {
   return String((ctx as any)?.meta?.chatId ?? (ctx as any)?.chatId ?? "global");
 }
 
-function toConstraintLang(
-  lang: "en" | "zh" | "mixed" | undefined
-): "en" | "zh" | undefined {
-  if (lang === "zh") return "zh";
-  if (lang === "en") return "en";
-  if (lang === "mixed") return "en";
-  return undefined;
+function countMatches(re: RegExp, s: string) {
+  return (s.match(re) || []).length;
 }
+
+/* =========================
+   Intent phrase helpers
+========================= */
+
+function looksLikeMeaningQuestion(msgLower: string) {
+  return (
+    /\bwaoc\b.*(\bmeaning\b|\bmean\b|\bmeans\b|\bacronym\b|\bfull\s*form\b|\bexpand(ed)?\b|\bstand(?:s|ing)?\s+for\b)/.test(
+      msgLower
+    ) ||
+    /\bwhat\s+(does|is|’s|'s)\s+waoc\s+(mean|meaning|stand(?:s|ing)?\s+for)\b/.test(
+      msgLower
+    ) ||
+    /^\s*waoc\s*\?\s*$/.test(msgLower) ||
+    /全称|什么意思|含义|缩写|代表什么|展开|啥意思/.test(msgLower)
+  );
+}
+
+function looksLikeCAQuestion(msgLower: string) {
+  return (
+    /\bca\b/.test(msgLower) ||
+    msgLower.includes("contract address") ||
+    msgLower.includes("contract") ||
+    msgLower.includes("address") ||
+    msgLower.includes("合约") ||
+    msgLower.includes("地址")
+  );
+}
+
+function looksLikeNewsQuestion(msgLower: string) {
+  return (
+    msgLower.includes("news") ||
+    msgLower.includes("latest") ||
+    msgLower.includes("update") ||
+    msgLower.includes("announcement") ||
+    msgLower.includes("what's new") ||
+    msgLower.includes("最新") ||
+    msgLower.includes("新闻") ||
+    msgLower.includes("动态") ||
+    msgLower.includes("公告") ||
+    msgLower.includes("有什么消息") ||
+    msgLower.includes("进展") ||
+    msgLower.includes("更新")
+  );
+}
+
+function looksLikePriceQuestion(msgLower: string) {
+  return (
+    /\bprice\b/.test(msgLower) ||
+    /\bmarket cap\b/.test(msgLower) ||
+    /\bchart\b/.test(msgLower) ||
+    /\bvaluation\b/.test(msgLower) ||
+    /\btoken price\b/.test(msgLower) ||
+    /价格|币价|行情|市值|估值|走势图/.test(msgLower)
+  );
+}
+
+function looksLikeXQuestion(msgLower: string) {
+  return (
+    /\bx\.com\b/.test(msgLower) ||
+    /\btwitter\b/.test(msgLower) ||
+    /\btweet\b/.test(msgLower) ||
+    /\baccount\b/.test(msgLower) ||
+    /@[a-z0-9_]{1,15}\b/i.test(msgLower) ||
+    /推特|账号|推文|x账号|x 帐号/.test(msgLower)
+  );
+}
+
+function looksLikeWebQuestion(msgLower: string) {
+  return (
+    /\bhttps?:\/\//.test(msgLower) ||
+    /\bwebsite\b/.test(msgLower) ||
+    /\bweb page\b/.test(msgLower) ||
+    /\barticle\b/.test(msgLower) ||
+    /\blink\b/.test(msgLower) ||
+    /网页|文章|网址|链接|网站/.test(msgLower)
+  );
+}
+
+function looksLikeLinksQuestion(msgLower: string) {
+  return (
+    msgLower === "website" ||
+    msgLower === "site" ||
+    msgLower === "links" ||
+    msgLower.includes("website") ||
+    msgLower.includes("官网") ||
+    msgLower.includes("链接") ||
+    msgLower.includes("site")
+  );
+}
+
+function looksLikeExplicitMissionRequest(msgLower: string) {
+  return (
+    /^\/mission\b/.test(msgLower) ||
+    /^mission\b/.test(msgLower) ||
+    /^任务\b/.test(msgLower) ||
+    /generate.*mission|create.*mission|写.*任务|生成.*任务|给我.*mission/.test(
+      msgLower
+    )
+  );
+}
+
+function looksLikeExplicitTweetRequest(msgLower: string) {
+  return /(^|\s)tweet(\s|$)|(^|\s)thread(\s|$)|推文|发推|长推/.test(msgLower);
+}
+
+function looksLikeNarrativeRequest(msgLower: string) {
+  return /叙事|宣言|理念|哲学|philosophy|manifesto|narrative|vision/.test(msgLower);
+}
+
+function looksLikeValuationRequest(msgLower: string) {
+  return /估值|value|valuation/.test(msgLower);
+}
+
+function looksLikeVerificationLikeQuestion(msgLower: string) {
+  return (
+    looksLikeNewsQuestion(msgLower) ||
+    looksLikeCAQuestion(msgLower) ||
+    looksLikePriceQuestion(msgLower) ||
+    /market|pump|dump|listing|partner|partnership|verify|scam|真假|今天|现在|上所|合作|验证|防骗/.test(
+      msgLower
+    )
+  );
+}
+
+function looksLikeReportIntent(msgLower: string) {
+  return /report|summary|summarize|weekly|daily|周报|日报|总结|报告/.test(msgLower);
+}
+
+function looksLikeKnowledgeIntent(msgLower: string) {
+  return /knowledge|guide|faq|playbook|lesson|strategy|洞察|经验|方法|文档|指南|知识/.test(
+    msgLower
+  );
+}
+
+function looksLikeGrowthIntent(msgLower: string) {
+  return /growth|campaign|distribution|content|retention|adoption|traction|expansion|community building|增长|传播|留存|活动/.test(
+    msgLower
+  );
+}
+
+function looksLikeBuilderIntent(msgLower: string) {
+  return /builder|developer|dev|build|building|repo|code|tracker|dashboard|tool|workflow|app|bot|开发者|构建者|代码|开发|工具|系统/.test(
+    msgLower
+  );
+}
+
+function looksLikeOrientationQuestion(msgLower: string) {
+  return (
+    /where to start|how to start|start here|how do i join|how to join|new here|help|guide me|what should i do first|i'm new/.test(
+      msgLower
+    ) || /怎么开始|怎么加入|新来的|新人|怎么参与|从哪里开始|入门/.test(msgLower)
+  );
+}
+
+function looksLikeRankingQuestion(msgLower: string) {
+  return /rank|ranking|leaderboard|score|points|排行榜|排名|积分/.test(msgLower);
+}
+
+function looksLikeCapabilityQuestion(msgLower: string) {
+  return (
+    /what can you do|who are you|how can you help|what do you do|你的作用|你能做什么|你是谁|你可以帮什么|what can you do in details|what can you do in detail/.test(
+      msgLower
+    )
+  );
+}
+
+function looksLikeCommunityIdentityQuestion(msgLower: string) {
+  return (
+    /what is this community|what is this about|what is this project|what is this group|这个社区是干什么的|这是做什么的|这个项目是做什么的/.test(
+      msgLower
+    )
+  );
+}
+
+function looksLikeSystemQuestion(msgLower: string) {
+  return (
+    /how does this system work|how does oneai work|how does this work|how does it work|how does the system operate|how do you operate|这个系统怎么运作|这个系统怎么工作|oneai怎么运作|这个是怎么工作的/.test(
+      msgLower
+    )
+  );
+}
+
+function looksLikeDirectQuestion(msgRaw: string) {
+  const msg = norm(msgRaw);
+  const m = lower(msgRaw);
+  return (
+    msg.includes("?") ||
+    /^(what|how|why|who|when|where|which|can|should|is|are|do|does)\b/.test(m) ||
+    /^(什么|怎么|为什么|谁|哪里|哪个|是否|能不能|是不是)/.test(m)
+  );
+}
+
+/* =========================
+   Community / links
+========================= */
 
 function getOfficialLinks() {
   const WEBSITE_URL = env("WEBSITE_URL") || env("WAOC_SITE_URL");
@@ -387,199 +612,8 @@ function inferCommunityContext(input: WaocChatInput): CommunityContext {
 }
 
 /* =========================
-   Intent helpers
+   Question type
 ========================= */
-
-function looksLikeMeaningQuestion(msgLower: string) {
-  return (
-    /\bwaoc\b.*(\bmeaning\b|\bmean\b|\bmeans\b|\bacronym\b|\bfull\s*form\b|\bexpand(ed)?\b|\bstand(?:s|ing)?\s+for\b)/.test(
-      msgLower
-    ) ||
-    /\bwhat\s+(does|is|’s|'s)\s+waoc\s+(mean|meaning|stand(?:s|ing)?\s+for)\b/.test(
-      msgLower
-    ) ||
-    /^\s*waoc\s*\?\s*$/.test(msgLower) ||
-    /全称|什么意思|含义|缩写|代表什么|展开|啥意思/.test(msgLower)
-  );
-}
-
-function looksLikeCAQuestion(msgLower: string) {
-  return (
-    /\bca\b/.test(msgLower) ||
-    msgLower.includes("contract") ||
-    msgLower.includes("address") ||
-    msgLower.includes("合约") ||
-    msgLower.includes("地址")
-  );
-}
-
-function looksLikeNewsQuestion(msgLower: string) {
-  return (
-    msgLower.includes("news") ||
-    msgLower.includes("latest") ||
-    msgLower.includes("update") ||
-    msgLower.includes("announcement") ||
-    msgLower.includes("what's new") ||
-    msgLower.includes("最新") ||
-    msgLower.includes("新闻") ||
-    msgLower.includes("动态") ||
-    msgLower.includes("公告") ||
-    msgLower.includes("有什么消息") ||
-    msgLower.includes("进展") ||
-    msgLower.includes("更新")
-  );
-}
-
-function looksLikePriceQuestion(msgLower: string) {
-  return (
-    /\bprice\b/.test(msgLower) ||
-    /\bmarket cap\b/.test(msgLower) ||
-    /\bchart\b/.test(msgLower) ||
-    /\bvaluation\b/.test(msgLower) ||
-    /\btoken price\b/.test(msgLower) ||
-    /价格|币价|行情|市值|估值|走势图/.test(msgLower)
-  );
-}
-
-function looksLikeXQuestion(msgLower: string) {
-  return (
-    /\bx\.com\b/.test(msgLower) ||
-    /\btwitter\b/.test(msgLower) ||
-    /\btweet\b/.test(msgLower) ||
-    /\baccount\b/.test(msgLower) ||
-    /@[a-z0-9_]{1,15}\b/i.test(msgLower) ||
-    /推特|账号|推文|X账号|X 帐号/.test(msgLower)
-  );
-}
-
-function looksLikeWebQuestion(msgLower: string) {
-  return (
-    /\bhttps?:\/\//.test(msgLower) ||
-    /\bwebsite\b/.test(msgLower) ||
-    /\bweb page\b/.test(msgLower) ||
-    /\barticle\b/.test(msgLower) ||
-    /\blink\b/.test(msgLower) ||
-    /网页|文章|网址|链接|网站/.test(msgLower)
-  );
-}
-
-function looksLikeLinksQuestion(msgLower: string) {
-  return (
-    msgLower === "website" ||
-    msgLower === "site" ||
-    msgLower === "links" ||
-    msgLower.includes("website") ||
-    msgLower.includes("官网") ||
-    msgLower.includes("链接") ||
-    msgLower.includes("site")
-  );
-}
-
-function looksLikeExplicitMissionRequest(msgLower: string) {
-  return (
-    /^\/mission\b/.test(msgLower) ||
-    /^mission\b/.test(msgLower) ||
-    /^任务\b/.test(msgLower) ||
-    /generate.*mission|create.*mission|写.*任务|生成.*任务|给我.*mission/.test(
-      msgLower
-    )
-  );
-}
-
-function looksLikeExplicitTweetRequest(msgLower: string) {
-  return /(^|\s)tweet(\s|$)|(^|\s)thread(\s|$)|推文|发推|长推/.test(msgLower);
-}
-
-function looksLikeNarrativeRequest(msgLower: string) {
-  return /叙事|宣言|理念|哲学|philosophy|manifesto|narrative|vision/.test(
-    msgLower
-  );
-}
-
-function looksLikeValuationRequest(msgLower: string) {
-  return /估值|value|valuation/.test(msgLower);
-}
-
-function looksLikeVerificationLikeQuestion(msgLower: string) {
-  return (
-    looksLikeNewsQuestion(msgLower) ||
-    looksLikeCAQuestion(msgLower) ||
-    looksLikePriceQuestion(msgLower) ||
-    /market|pump|dump|listing|partner|partnership|verify|scam|真假|今天|现在|上所|合作|验证|防骗/.test(
-      msgLower
-    )
-  );
-}
-
-function looksLikeReportIntent(msgLower: string) {
-  return /report|summary|summarize|weekly|daily|周报|日报|总结|报告/.test(
-    msgLower
-  );
-}
-
-function looksLikeKnowledgeIntent(msgLower: string) {
-  return /knowledge|guide|faq|playbook|lesson|strategy|洞察|经验|方法|文档|指南|知识/.test(
-    msgLower
-  );
-}
-
-function looksLikeGrowthIntent(msgLower: string) {
-  return /growth|campaign|distribution|retention|twitter|x\.com|增长|传播|留存|活动|adoption|traction|expansion|community building/.test(
-    msgLower
-  );
-}
-
-function looksLikeBuilderIntent(msgLower: string) {
-  return /builder|developer|dev|build|building|repo|code|tracker|dashboard|tool|workflow|app|bot|开发者|构建者|代码|开发|工具|系统/.test(
-    msgLower
-  );
-}
-
-function looksLikeOrientationQuestion(msgLower: string) {
-  return (
-    /where to start|how to start|start here|how do i join|how to join|new here|help|guide me|what should i do first|i'm new/.test(
-      msgLower
-    ) || /怎么开始|怎么加入|新来的|新人|怎么参与|从哪里开始|入门/.test(msgLower)
-  );
-}
-
-function looksLikeRankingQuestion(msgLower: string) {
-  return /rank|ranking|leaderboard|score|points|排行榜|排名|积分/.test(msgLower);
-}
-
-function looksLikeCapabilityQuestion(msgLower: string) {
-  return (
-    /what can you do|who are you|how can you help|what do you do|你的作用|你能做什么|你是谁|你可以帮什么|what can you do in details|what can you do in detail/.test(
-      msgLower
-    )
-  );
-}
-
-function looksLikeCommunityIdentityQuestion(msgLower: string) {
-  return (
-    /what is this community|what is this about|what is this project|what is this group|这个社区是干什么的|这是做什么的|这个项目是做什么的/.test(
-      msgLower
-    )
-  );
-}
-
-function looksLikeSystemQuestion(msgLower: string) {
-  return (
-    /how does this system work|how does oneai work|how does this work|how does it work|how does the system operate|how do you operate|这个系统怎么运作|这个系统怎么工作|oneai怎么运作|这个是怎么工作的/.test(
-      msgLower
-    )
-  );
-}
-
-function looksLikeDirectQuestion(msgRaw: string) {
-  const msg = norm(msgRaw);
-  const m = lower(msgRaw);
-  return (
-    msg.includes("?") ||
-    /^(what|how|why|who|when|where|which|can|should|is|are|do|does)\b/.test(m) ||
-    /^(什么|怎么|为什么|谁|哪里|哪个|是否|能不能|是不是)/.test(m)
-  );
-}
 
 function inferQuestionType(msgRaw: string): QuestionType {
   const m = lower(msgRaw);
@@ -591,7 +625,10 @@ function inferQuestionType(msgRaw: string): QuestionType {
 }
 
 /* =========================
-   Community Signals
+   Signals
+   IMPORTANT:
+   - external info signals only use CURRENT message
+   - contextual community signals can use joined text
 ========================= */
 
 function detectCommunitySignals(
@@ -683,27 +720,30 @@ function detectCommunitySignals(
     );
 
   const selfOrganizingSignal =
-    /owner|ownership|owner type|who should own|collaboration opportunity|coordination gap|structure|next step|owner|负责人|谁来负责|协作机会|协调缺口|结构化|下一步/.test(
+    /owner|ownership|owner type|who should own|collaboration opportunity|coordination gap|structure|next step|负责人|谁来负责|协作机会|协调缺口|结构化|下一步/.test(
       joined
     );
 
   const orientationSignal = looksLikeOrientationQuestion(msg);
+
   const builderQuestionSignal =
     /who is building|who are the builders|who is the dev|谁在构建|谁在开发|有哪些 builder/.test(
       joined
     );
-  const pricingSignal = looksLikePriceQuestion(joined);
-  const capabilityQuestionSignal = looksLikeCapabilityQuestion(msg);
-  const communityIdentityQuestionSignal =
-    looksLikeCommunityIdentityQuestion(msg);
-  const systemQuestionSignal = looksLikeSystemQuestion(msg);
-  const directQuestionSignal = looksLikeDirectQuestion(messageRaw);
-  const waocExplicitSignal =
-    /\bwaoc\b|we are one connection|WAOC|We Are One Connection/.test(messageRaw);
 
+  // IMPORTANT FIX: only use CURRENT message for external-intent routing
+  const pricingSignal = looksLikePriceQuestion(msg);
   const newsSignal = looksLikeNewsQuestion(msg);
   const xSignal = looksLikeXQuestion(msg);
   const webSignal = looksLikeWebQuestion(msg);
+
+  const capabilityQuestionSignal = looksLikeCapabilityQuestion(msg);
+  const communityIdentityQuestionSignal = looksLikeCommunityIdentityQuestion(msg);
+  const systemQuestionSignal = looksLikeSystemQuestion(msg);
+  const directQuestionSignal = looksLikeDirectQuestion(messageRaw);
+
+  const waocExplicitSignal =
+    /\bwaoc\b|we are one connection|WAOC|We Are One Connection/.test(messageRaw);
 
   return {
     meaningSignal,
@@ -740,18 +780,15 @@ function detectCommunitySignals(
 }
 
 /* =========================
-   Network Context Inference
+   Network inference
 ========================= */
-
-function countMatches(re: RegExp, s: string) {
-  return (s.match(re) || []).length;
-}
 
 function inferNetworkContext(
   messageRaw: string,
   recentMessagesRaw = ""
 ): NetworkContext {
   const text = lower(`${messageRaw}\n${recentMessagesRaw}`);
+  const pure = lower(messageRaw);
 
   const builderDensity = countMatches(
     /build|building|ship|code|repo|deploy|bot|dashboard|tracker|app|tool|workflow|开发|部署|代码/g,
@@ -807,13 +844,13 @@ function inferNetworkContext(
 
   if (!text || text.length < 50) {
     coordinationState = "low_activity";
-  } else if (looksLikePriceQuestion(text)) {
+  } else if (looksLikePriceQuestion(pure)) {
     coordinationState = "price_window";
-  } else if (looksLikeNewsQuestion(text)) {
+  } else if (looksLikeNewsQuestion(pure)) {
     coordinationState = "news_window";
-  } else if (looksLikeXQuestion(text)) {
+  } else if (looksLikeXQuestion(pure)) {
     coordinationState = "x_window";
-  } else if (looksLikeWebQuestion(text)) {
+  } else if (looksLikeWebQuestion(pure)) {
     coordinationState = "web_window";
   } else if (noiseLevel >= 3) {
     coordinationState = "high_noise";
@@ -855,7 +892,7 @@ function inferNetworkContext(
 }
 
 /* =========================
-   Room / Momentum / Depth
+   Room / momentum / depth
 ========================= */
 
 function inferRoomState(
@@ -1021,7 +1058,10 @@ function inferResponseDepth(
   return "minimal";
 }
 
-function inferOperatorMode(signals: CommunitySignals, questionType: QuestionType): OperatorMode {
+function inferOperatorMode(
+  signals: CommunitySignals,
+  questionType: QuestionType
+): OperatorMode {
   if (signals.newsSignal) return "news";
   if (signals.pricingSignal) return "price";
   if (signals.xSignal) return "x";
@@ -1046,7 +1086,7 @@ function inferOperatorMode(signals: CommunitySignals, questionType: QuestionType
 }
 
 /* =========================
-   Coordination / Mission opportunity
+   Coordination gap
 ========================= */
 
 function shouldSkipCoordinationGap(signals: CommunitySignals, msgLower: string) {
@@ -1126,10 +1166,6 @@ function inferMissionOpportunity(
   return false;
 }
 
-/* =========================
-   Action Inference
-========================= */
-
 function inferPreferredAction(
   signals: CommunitySignals,
   network: NetworkContext,
@@ -1173,10 +1209,6 @@ function inferPreferredAction(
   return "none";
 }
 
-/* =========================
-   Coordination Intelligence Layer
-========================= */
-
 function inferCoordinationIntelligence(args: {
   input: WaocChatInput;
   messageRaw: string;
@@ -1189,12 +1221,7 @@ function inferCoordinationIntelligence(args: {
 
   const questionType = inferQuestionType(messageRaw);
   const gap = detectCoordinationGap(signals, network, msgLower);
-  const roomState = inferRoomState(
-    messageRaw,
-    recentMessagesRaw,
-    network,
-    input.roomState
-  );
+  const roomState = inferRoomState(messageRaw, recentMessagesRaw, network, input.roomState);
   const momentum = inferConversationMomentum(
     input,
     messageRaw,
@@ -1277,6 +1304,247 @@ function inferCoordinationIntelligence(args: {
 }
 
 /* =========================
+   AI Router v5
+========================= */
+
+function inferRouteDecision(args: {
+  raw: string;
+  msg: string;
+  signals: CommunitySignals;
+  network: NetworkContext;
+  intelligence: CoordinationIntelligence;
+}): RouteDecision {
+  const { msg, signals, network, intelligence } = args;
+
+  // Tier 1: hard intent, highest priority
+  if (looksLikeMeaningQuestion(msg)) {
+    return {
+      intent: "meaning",
+      confidence: 0.99,
+      suggestedAction: "none",
+      reason: "hard_meaning_match",
+    };
+  }
+
+  if (looksLikeLinksQuestion(msg) || looksLikeOrientationQuestion(msg)) {
+    return {
+      intent: "links",
+      confidence: 0.98,
+      suggestedAction: "/links",
+      reason: "hard_links_or_onboarding_match",
+    };
+  }
+
+  if (looksLikeCAQuestion(msg)) {
+    return {
+      intent: "ca",
+      confidence: 0.98,
+      suggestedAction: "/links",
+      reason: "hard_ca_match",
+    };
+  }
+
+  if (looksLikeCapabilityQuestion(msg)) {
+    return {
+      intent: "capability",
+      confidence: 0.99,
+      suggestedAction: "none",
+      reason: "hard_capability_match",
+    };
+  }
+
+  if (looksLikeCommunityIdentityQuestion(msg)) {
+    return {
+      intent: "community",
+      confidence: 0.99,
+      suggestedAction: "none",
+      reason: "hard_community_match",
+    };
+  }
+
+  if (looksLikeSystemQuestion(msg)) {
+    return {
+      intent: "system",
+      confidence: 0.99,
+      task: "knowledge_agent",
+      suggestedAction: "/knowledge",
+      reason: "hard_system_match",
+    };
+  }
+
+  if (looksLikeValuationRequest(msg)) {
+    return {
+      intent: "valuation",
+      confidence: 0.95,
+      task: "waoc_brain",
+      suggestedAction: "/knowledge",
+      reason: "hard_valuation_match",
+    };
+  }
+
+  if (looksLikeNarrativeRequest(msg)) {
+    return {
+      intent: "narrative",
+      confidence: 0.95,
+      task: "waoc_narrative",
+      suggestedAction: "/knowledge",
+      reason: "hard_narrative_match",
+    };
+  }
+
+  if (looksLikeExplicitTweetRequest(msg)) {
+    return {
+      intent: "tweet",
+      confidence: 0.95,
+      task: "tweet",
+      suggestedAction: "/growth",
+      reason: "hard_tweet_match",
+    };
+  }
+
+  if (looksLikeExplicitMissionRequest(msg)) {
+    return {
+      intent: "mission",
+      confidence: 0.96,
+      task: "mission",
+      suggestedAction: "/mission",
+      reason: "hard_mission_match",
+    };
+  }
+
+  if (looksLikeReportIntent(msg)) {
+    return {
+      intent: "report",
+      confidence: 0.94,
+      task: "report_agent",
+      suggestedAction: "/report",
+      reason: "hard_report_match",
+    };
+  }
+
+  if (looksLikeRankingQuestion(msg)) {
+    return {
+      intent: "ranking",
+      confidence: 0.94,
+      suggestedAction: "/rank",
+      reason: "hard_rank_match",
+    };
+  }
+
+  // Tier 2: external info, CURRENT MESSAGE ONLY
+  if (
+    signals.newsSignal &&
+    !signals.capabilityQuestionSignal &&
+    !signals.communityIdentityQuestionSignal &&
+    !signals.systemQuestionSignal
+  ) {
+    return {
+      intent: "news",
+      confidence: 0.92,
+      task: "news_agent",
+      suggestedAction: "/news",
+      reason: "external_news_signal_current_message",
+    };
+  }
+
+  if (
+    signals.pricingSignal &&
+    !signals.capabilityQuestionSignal &&
+    !signals.communityIdentityQuestionSignal &&
+    !signals.systemQuestionSignal
+  ) {
+    return {
+      intent: "price",
+      confidence: 0.92,
+      task: "price_agent",
+      suggestedAction: "/price",
+      reason: "external_price_signal_current_message",
+    };
+  }
+
+  if (
+    signals.xSignal &&
+    !signals.capabilityQuestionSignal &&
+    !signals.communityIdentityQuestionSignal &&
+    !signals.systemQuestionSignal
+  ) {
+    return {
+      intent: "x",
+      confidence: 0.92,
+      task: "x_agent",
+      suggestedAction: "/x",
+      reason: "external_x_signal_current_message",
+    };
+  }
+
+  if (
+    signals.webSignal &&
+    !signals.capabilityQuestionSignal &&
+    !signals.communityIdentityQuestionSignal &&
+    !signals.systemQuestionSignal
+  ) {
+    return {
+      intent: "web",
+      confidence: 0.92,
+      task: "web_agent",
+      suggestedAction: "/web",
+      reason: "external_web_signal_current_message",
+    };
+  }
+
+  // Tier 3: semantic community routing
+  if (looksLikeGrowthIntent(msg) || intelligence.questionType === "growth" || signals.growthSignal) {
+    return {
+      intent: "growth",
+      confidence: 0.84,
+      task: "growth_agent",
+      suggestedAction: "/growth",
+      reason: "growth_semantic_match",
+    };
+  }
+
+  if (
+    signals.knowledgeSignal ||
+    signals.insightSignal ||
+    signals.systemQuestionSignal
+  ) {
+    return {
+      intent: "knowledge",
+      confidence: 0.80,
+      task: "knowledge_agent",
+      suggestedAction: "/knowledge",
+      reason: "knowledge_semantic_match",
+    };
+  }
+
+  if (
+    looksLikeBuilderIntent(msg) ||
+    signals.builderSignal ||
+    signals.builderQuestionSignal ||
+    signals.collaborationSignal ||
+    intelligence.missionOpportunity ||
+    intelligence.gap === "mission_without_owner"
+  ) {
+    return {
+      intent: "builder",
+      confidence: 0.78,
+      task: "builder_agent",
+      suggestedAction: intelligence.preferredAction === "none"
+        ? "/builders"
+        : intelligence.preferredAction,
+      reason: "builder_semantic_match",
+    };
+  }
+
+  return {
+    intent: "general",
+    confidence: 0.50,
+    suggestedAction: intelligence.shouldAvoidRouting ? "none" : intelligence.preferredAction,
+    reason: "general_fallback",
+  };
+}
+
+/* =========================
    Prompt hints
 ========================= */
 
@@ -1323,10 +1591,11 @@ function buildSignalHint(signals: CommunitySignals, lang: "en" | "zh" | "mixed")
 function buildRuntimeHint(
   network: NetworkContext,
   intelligence: CoordinationIntelligence,
+  route: RouteDecision,
   lang: "en" | "zh" | "mixed"
 ) {
   const base =
-    `state=${network.coordinationState}, roomState=${intelligence.roomState}, momentum=${intelligence.momentum}, v22Momentum=${intelligence.v22Momentum}, gap=${intelligence.gap}, preferredAction=${intelligence.preferredAction}, priority=${intelligence.coordinationPriority}, responseDepth=${intelligence.responseDepth}, operatorMode=${intelligence.operatorMode}, questionType=${intelligence.questionType}, missionOpportunity=${intelligence.missionOpportunity ? "true" : "false"}, builderDensity=${network.builderDensity}, missionMomentum=${network.missionMomentum}, collaborationDensity=${network.collaborationDensity}, knowledgeDensity=${network.knowledgeDensity}, insightDensity=${network.insightDensity}, growthDensity=${network.growthDensity}, newcomerDensity=${network.newcomerDensity}, executionDensity=${network.executionDensity}, organizationDensity=${network.organizationDensity}, noiseLevel=${network.noiseLevel}`;
+    `state=${network.coordinationState}, roomState=${intelligence.roomState}, momentum=${intelligence.momentum}, v22Momentum=${intelligence.v22Momentum}, gap=${intelligence.gap}, preferredAction=${intelligence.preferredAction}, priority=${intelligence.coordinationPriority}, responseDepth=${intelligence.responseDepth}, operatorMode=${intelligence.operatorMode}, questionType=${intelligence.questionType}, missionOpportunity=${intelligence.missionOpportunity ? "true" : "false"}, builderDensity=${network.builderDensity}, missionMomentum=${network.missionMomentum}, collaborationDensity=${network.collaborationDensity}, knowledgeDensity=${network.knowledgeDensity}, insightDensity=${network.insightDensity}, growthDensity=${network.growthDensity}, newcomerDensity=${network.newcomerDensity}, executionDensity=${network.executionDensity}, organizationDensity=${network.organizationDensity}, noiseLevel=${network.noiseLevel}, aiIntent=${route.intent}, aiConfidence=${route.confidence}, aiReason=${route.reason}`;
 
   if (lang === "zh") return `\n\n运行时上下文：${base}`;
   if (lang === "mixed") return `\n\nRuntime/运行时 context: ${base}`;
@@ -1369,35 +1638,285 @@ function buildCommunityContextHint(
   return `\n\nCommunity context: ${parts}`;
 }
 
-function buildOperatorHint(
-  signals: CommunitySignals,
-  intelligence: CoordinationIntelligence,
-  lang: "en" | "zh" | "mixed"
-) {
-  const parts = [
-    `operatorMode=${intelligence.operatorMode}`,
-    `responseDepth=${intelligence.responseDepth}`,
-    `questionType=${intelligence.questionType}`,
-    `v22Momentum=${intelligence.v22Momentum}`,
-    `missionOpportunity=${intelligence.missionOpportunity ? "1" : "0"}`,
-    `builder=${signals.builderSignal ? "1" : "0"}`,
-    `contributor=${signals.contributorSignal ? "1" : "0"}`,
-    `collaboration=${signals.collaborationSignal ? "1" : "0"}`,
-    `directQuestion=${signals.directQuestionSignal ? "1" : "0"}`,
-    `systemQuestion=${signals.systemQuestionSignal ? "1" : "0"}`,
-    `news=${signals.newsSignal ? "1" : "0"}`,
-    `price=${signals.pricingSignal ? "1" : "0"}`,
-    `x=${signals.xSignal ? "1" : "0"}`,
-    `web=${signals.webSignal ? "1" : "0"}`,
-  ].join(", ");
+/* =========================
+   Quick replies
+========================= */
 
-  if (lang === "zh") return `\n\n运营判断：${parts}`;
-  if (lang === "mixed") return `\n\nOperator/运营 hints: ${parts}`;
-  return `\n\nOperator hints: ${parts}`;
+function quickAutoReply(args: {
+  raw: string;
+  msg: string;
+  lang: "en" | "zh" | "mixed";
+  community: CommunityContext;
+}): WaocChatData | null {
+  const { msg, lang, community } = args;
+  const defaults = getOfficialLinks();
+  const WAOC_CA_SOL = env("WAOC_CA_SOL");
+  const WAOC_CA_BSC = env("WAOC_CA_BSC");
+
+  const linkLines = community.officialLinks
+    ? community.officialLinks.split("|").map((x) => x.trim()).filter(Boolean)
+    : defaults.links;
+
+  const actionLinks: WaocSuggestedAction = "/links";
+  const actionNone: WaocSuggestedAction = "none";
+
+  if (looksLikeMeaningQuestion(msg) && community.isWAOC) {
+    const reply =
+      lang === "zh"
+        ? "WAOC = We Are One Connection。\nWAOC 代表一种关于协作、贡献与集体智能的长期愿景。\n这里更重视实际推进，而不只是讨论。\n" +
+          (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "（暂未配置官方链接）")
+        : "WAOC = We Are One Connection.\nWAOC represents a long-term vision of coordination, contribution, and collective intelligence.\nIt is more about practical coordination than abstract talk.\n" +
+          (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "(official links not configured yet)");
+
+    return {
+      reply,
+      suggestedAction: linkLines.length ? actionLinks : actionNone,
+    };
+  }
+
+  if (looksLikeLinksQuestion(msg) || looksLikeOrientationQuestion(msg)) {
+    const reply =
+      lang === "zh"
+        ? "官方入口如下。\n先从核心链接开始会更清楚。\n" +
+          (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "（暂未配置链接）")
+        : "Official entry points are below.\nStarting from the core links is the clearest path.\n" +
+          (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "(links not configured yet)");
+
+    return {
+      reply,
+      suggestedAction: linkLines.length ? actionLinks : actionNone,
+    };
+  }
+
+  if (looksLikeCommunityIdentityQuestion(msg)) {
+    const reply =
+      lang === "zh"
+        ? `${community.communityName || "这是一个社区"}。\n${
+            community.communityIdentity ||
+            community.communityNarrative ||
+            community.communityFocus ||
+            "这里更适合围绕实际协作、贡献和有用讨论来理解。"
+          }\n这里更重视行动与协作。`
+        : `${community.communityName || "This is a community"}.\n${
+            community.communityIdentity ||
+            community.communityNarrative ||
+            community.communityFocus ||
+            "The best way to understand it is through practical coordination and participation."
+          }\nIt is more action-oriented than purely informational.`;
+
+    return { reply, suggestedAction: "none" };
+  }
+
+  if (looksLikeSystemQuestion(msg)) {
+    const reply =
+      lang === "zh"
+        ? "它更像一个协调接口。\n消息进来后，会先判断是闲聊、提问、builder 想法、入门问题，还是更适合进入 knowledge / mission 场景。\n然后再决定是直接回答，还是给出更合适的下一步。"
+        : "It works more like a coordination interface.\nA message gets classified into chat, question, builder idea, onboarding, or something that should move toward knowledge or mission.\nThen it decides whether to answer directly or suggest the next useful step.";
+
+    return { reply, suggestedAction: "/knowledge" };
+  }
+
+  if (looksLikeCapabilityQuestion(msg)) {
+    const reply =
+      lang === "zh"
+        ? "我主要把群里有价值的话题往行动方向推进。\n比如识别 builder、串联想法、把下一步说清楚。\n也会在合适的时候把讨论变成 mission，或路由到对应入口。"
+        : "I mainly help useful ideas move toward action.\nI surface builders, connect ideas, and make the next step clearer.\nWhen needed, I route discussion toward mission, knowledge, or external info flows.";
+
+    return { reply, suggestedAction: "none" };
+  }
+
+  if (looksLikeCAQuestion(msg) || msg === "ca" || msg.includes("ca ")) {
+    const hasSol = Boolean(WAOC_CA_SOL);
+    const hasBsc = Boolean(WAOC_CA_BSC);
+
+    if (community.isWAOC && (hasSol || hasBsc)) {
+      const lines: string[] = [];
+      if (hasSol) lines.push(`Solana CA: ${WAOC_CA_SOL}`);
+      if (hasBsc) lines.push(`BSC CA: ${WAOC_CA_BSC}`);
+
+      return {
+        reply:
+          lang === "zh"
+            ? `以下是当前已配置的官方合约地址。\n${lines.map((x) => `- ${x}`).join("\n")}\n请只以官方渠道为准。`
+            : `These are the currently configured official contract addresses.\n${lines.map((x) => `- ${x}`).join("\n")}\nOnly trust official channels.`,
+        suggestedAction: "/links",
+      };
+    }
+
+    return {
+      reply:
+        lang === "zh"
+          ? "我不会猜或乱编合约地址。\n这类信息应只以官方渠道为准。\n建议查看置顶或官方入口。"
+          : "I won’t guess or fabricate a contract address.\nThis should come only from official channels.\nCheck pinned information or official links.",
+      suggestedAction: "/links",
+    };
+  }
+
+  return null;
 }
 
 /* =========================
-   Rhythm control
+   Constraint guard
+========================= */
+
+function applyConstraintsOrFallback(args: {
+  data: WaocChatData;
+  input: WaocChatInput;
+}): { ok: true; data: WaocChatData } {
+  const data = args.data || { reply: "", suggestedAction: "none" };
+  const input = args.input || ({} as any);
+
+  const check = checkWaocChatConstraints({
+    data,
+    userMessage: input.message,
+    lang: toConstraintLang(input.lang),
+  });
+
+  if (check.ok) {
+    return {
+      ok: true,
+      data: {
+        reply: norm(check.data?.reply ?? data.reply),
+        suggestedAction: ensureAllowedAction(
+          check.data?.suggestedAction ?? data.suggestedAction
+        ),
+      },
+    };
+  }
+
+  const lang: "en" | "zh" | "mixed" =
+    input.lang === "zh" ? "zh" : input.lang === "mixed" ? "mixed" : "en";
+
+  return {
+    ok: true,
+    data: {
+      reply:
+        norm(data.reply) ||
+        (lang === "zh"
+          ? "收到。\n先保留这个方向。"
+          : "Got it.\nKeeping this direction noted."),
+      suggestedAction: ensureAllowedAction(data.suggestedAction),
+    },
+  };
+}
+
+/* =========================
+   Final polish
+========================= */
+
+function appendUniqueLine(reply: string, line: string) {
+  const a = norm(reply);
+  const b = norm(line);
+  if (!a) return b;
+  if (!b) return a;
+  if (a.includes(b)) return a;
+  return `${a}\n${b}`.trim();
+}
+
+function makeMinimalReply(
+  lang: "en" | "zh" | "mixed",
+  kind: "noise" | "tense" | "cooling"
+): string {
+  if (lang === "zh") {
+    if (kind === "noise") return "先把重点放回一个更具体的问题。";
+    if (kind === "tense") return "先冷静一下，尽量回到事实本身。";
+    return "收到。\n先保持简洁。";
+  }
+
+  if (kind === "noise") return "Let’s bring this back to one concrete problem.";
+  if (kind === "tense") return "Let’s keep this calm and grounded in facts.";
+  return "Got it.\nKeeping this brief for now.";
+}
+
+function shouldOverrideWithMinimalReply(args: {
+  currentReply: string;
+  lang: "en" | "zh" | "mixed";
+  intelligence: CoordinationIntelligence;
+  signals: CommunitySignals;
+}): string | null {
+  const { currentReply, lang, intelligence, signals } = args;
+
+  if (
+    signals.meaningSignal ||
+    signals.verificationSignal ||
+    signals.capabilityQuestionSignal ||
+    signals.communityIdentityQuestionSignal ||
+    signals.systemQuestionSignal ||
+    signals.directQuestionSignal ||
+    intelligence.responseDepth === "full"
+  ) {
+    return null;
+  }
+
+  if (!intelligence.shouldStayMinimal) return null;
+
+  if (intelligence.roomState === "tense") {
+    return currentReply || makeMinimalReply(lang, "tense");
+  }
+  if (intelligence.roomState === "noisy" || intelligence.momentum === "repetitive") {
+    return currentReply || makeMinimalReply(lang, "noise");
+  }
+  if (intelligence.momentum === "cooling") {
+    return currentReply || makeMinimalReply(lang, "cooling");
+  }
+  return null;
+}
+
+function makeWorkflowPaddingLine(first: string, lang: "en" | "zh" | "mixed" = "en") {
+  const f = lower(first);
+
+  if (lang === "zh") {
+    if (/价格|币价|市值|行情/.test(f)) return "如果要实时数据，还需要接价格源。";
+    if (/新闻|动态|公告/.test(f)) return "如果要最新动态，还需要接新闻源。";
+    if (/推特|账号|推文|x/.test(f)) return "如果要继续分析，最好直接读取该账号内容。";
+    if (/网页|文章|链接|网站/.test(f)) return "如果要更准确总结，最好先抓取正文。";
+    if (/任务|mission/.test(f)) return "这个方向可以继续收敛成一个更具体的任务。";
+    return "这个方向可以继续往下展开。";
+  }
+
+  if (/price|market cap|chart|valuation/.test(f)) {
+    return "A live price source would make this more useful.";
+  }
+  if (/news|update|announcement/.test(f)) {
+    return "A live news source would make this more reliable.";
+  }
+  if (/twitter|x|tweet|account/.test(f)) {
+    return "Reading the actual account content would make this stronger.";
+  }
+  if (/website|web|article|link/.test(f)) {
+    return "Fetching the page content would make this more accurate.";
+  }
+  if (/mission|task/.test(f)) {
+    return "This could be narrowed into a more concrete task.";
+  }
+
+  return "This could be taken one step further.";
+}
+
+function finalizeReplyLines(
+  reply: string,
+  lang: "en" | "zh" | "mixed" = "en"
+): string {
+  const lines = norm(reply)
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  if (!lines.length) {
+    return lang === "zh"
+      ? "收到。\n这个方向可以继续往下展开。"
+      : "Got it.\nThis could be taken one step further.";
+  }
+
+  const clipped = lines.slice(0, 5);
+  if (clipped.length >= 2) return clipped.join("\n");
+
+  const one = clipped[0];
+  return [one, makeWorkflowPaddingLine(one, lang)].join("\n");
+}
+
+/* =========================
+   Group rhythm
 ========================= */
 
 type GroupState =
@@ -1408,7 +1927,7 @@ type GroupState =
   | "conflict"
   | "hype_overheat";
 
-function inferGroupState(recentMessagesRaw: any): GroupState {
+function inferGroupState(recentMessagesRaw: string): GroupState {
   const text = lower(recentMessagesRaw);
 
   if (!text || text.length < 50) return "low_activity";
@@ -1510,467 +2029,8 @@ function pickIgnitionLine(
 }
 
 const __igniteMap: Map<string, number> =
-  (globalThis as any).__waocIgniteMap ||
-  ((globalThis as any).__waocIgniteMap = new Map<string, number>());
-
-/* =========================
-   Quick replies
-========================= */
-
-function quickAutoReply(args: {
-  raw: string;
-  msg: string;
-  lang: "en" | "zh" | "mixed";
-  community: CommunityContext;
-}): WaocChatData | null {
-  const { msg, lang, community } = args;
-  const defaults = getOfficialLinks();
-  const WAOC_CA_SOL = env("WAOC_CA_SOL");
-  const WAOC_CA_BSC = env("WAOC_CA_BSC");
-
-  const linkLines = community.officialLinks
-    ? community.officialLinks.split("|").map((x) => x.trim()).filter(Boolean)
-    : defaults.links;
-
-  const actionLinks: WaocSuggestedAction = "/links";
-  const actionNone: WaocSuggestedAction = "none";
-
-  if (looksLikeMeaningQuestion(msg) && community.isWAOC) {
-    if (lang === "zh") {
-      return {
-        reply:
-          "WAOC = We Are One Connection。\n" +
-          "WAOC 代表一种关于协作、贡献与集体智能的长期愿景。\n" +
-          "这里更重视实际推进，而不只是讨论。\n" +
-          "官方入口见下方。\n" +
-          (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "（暂未配置官方链接）"),
-        suggestedAction: linkLines.length ? actionLinks : actionNone,
-      };
-    }
-
-    if (lang === "mixed") {
-      return {
-        reply:
-          "WAOC = We Are One Connection.\n" +
-          "WAOC represents a long-term vision of coordination, contribution, and collective intelligence.\n" +
-          "It is more about practical coordination than abstract talk.\n" +
-          "Official entry points are below.\n" +
-          (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "(official links not configured yet)"),
-        suggestedAction: linkLines.length ? actionLinks : actionNone,
-      };
-    }
-
-    return {
-      reply:
-        "WAOC = We Are One Connection.\n" +
-        "WAOC represents a long-term vision of coordination, contribution, and collective intelligence.\n" +
-        "It is more about practical coordination than abstract talk.\n" +
-        "Official entry points are below.\n" +
-        (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "(official links not configured yet)"),
-      suggestedAction: linkLines.length ? actionLinks : actionNone,
-    };
-  }
-
-  if (looksLikeLinksQuestion(msg) || looksLikeOrientationQuestion(msg)) {
-    if (lang === "zh") {
-      return {
-        reply:
-          "官方入口如下。\n" +
-          "先从核心链接开始会更清楚。\n" +
-          "如果是新人，建议先看网站和社区入口。\n" +
-          (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "（暂未配置链接）"),
-        suggestedAction: linkLines.length ? actionLinks : actionNone,
-      };
-    }
-
-    if (lang === "mixed") {
-      return {
-        reply:
-          "Official entry points are below.\n" +
-          "Starting from the core links is the clearest path.\n" +
-          "If you are new, begin with the site and community entry points.\n" +
-          (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "(links not configured yet)"),
-        suggestedAction: linkLines.length ? actionLinks : actionNone,
-      };
-    }
-
-    return {
-      reply:
-        "Official entry points are below.\n" +
-        "Starting from the core links is the clearest path.\n" +
-        "If you are new, begin with the site and community entry points.\n" +
-        (linkLines.length ? linkLines.map((x) => `- ${x}`).join("\n") : "(links not configured yet)"),
-      suggestedAction: linkLines.length ? actionLinks : actionNone,
-    };
-  }
-
-  if (looksLikeCommunityIdentityQuestion(msg)) {
-    if (lang === "zh") {
-      return {
-        reply:
-          (community.communityName ? `${community.communityName} 是一个社区。` : "这是一个社区。") +
-          "\n" +
-          (community.communityIdentity ||
-            community.communityNarrative ||
-            community.communityFocus ||
-            "这里更适合围绕实际协作、贡献和有用讨论来理解。") +
-          "\n这里更重视行动与协作。\n不是单纯的信息群。",
-        suggestedAction: "none",
-      };
-    }
-
-    if (lang === "mixed") {
-      return {
-        reply:
-          (community.communityName ? `${community.communityName} is a community.` : "This is a community.") +
-          "\n" +
-          (community.communityIdentity ||
-            community.communityNarrative ||
-            community.communityFocus ||
-            "The best way to understand it is through practical coordination and participation.") +
-          "\nIt is more action-oriented than purely informational.\nThat is usually the best lens to read it through.",
-        suggestedAction: "none",
-      };
-    }
-
-    return {
-      reply:
-        (community.communityName ? `${community.communityName} is a community.` : "This is a community.") +
-        "\n" +
-        (community.communityIdentity ||
-          community.communityNarrative ||
-          community.communityFocus ||
-          "The best way to understand it is through practical coordination and participation.") +
-        "\nIt is more action-oriented than purely informational.\nThat is usually the best lens to read it through.",
-      suggestedAction: "none",
-    };
-  }
-
-  if (looksLikeSystemQuestion(msg)) {
-    if (lang === "zh") {
-      return {
-        reply:
-          "它更像一个协调接口。\n" +
-          "消息进来之后，会先判断是闲聊、提问、builder 想法、入门问题，还是更适合进入 knowledge / mission 场景。\n" +
-          "然后再决定是直接回答，还是给出更合适的下一步。\n" +
-          "目标是把讨论尽量推进到更清晰的行动。",
-        suggestedAction: "/knowledge",
-      };
-    }
-
-    if (lang === "mixed") {
-      return {
-        reply:
-          "It works more like a coordination interface.\n" +
-          "A message gets read as chat, question, builder idea, onboarding, or something that should move toward knowledge or mission.\n" +
-          "Then it decides whether to answer directly or suggest the next useful step.\n" +
-          "The aim is to make discussion more actionable.",
-        suggestedAction: "/knowledge",
-      };
-    }
-
-    return {
-      reply:
-        "It works more like a coordination interface.\n" +
-        "A message gets read as chat, question, builder idea, onboarding, or something that should move toward knowledge or mission.\n" +
-        "Then it decides whether to answer directly or suggest the next useful step.\n" +
-        "The aim is to make discussion more actionable.",
-      suggestedAction: "/knowledge",
-    };
-  }
-
-  if (looksLikeCapabilityQuestion(msg)) {
-    if (lang === "zh") {
-      return {
-        reply:
-          "我主要是帮群里把有价值的话题往行动方向推进。\n" +
-          "比如识别 builder、串联想法、把下一步说清楚。\n" +
-          "也会在合适的时候把讨论变成 mission。\n" +
-          "如果涉及外部信息，也可以路由到对应入口。",
-        suggestedAction: "none",
-      };
-    }
-
-    if (lang === "mixed") {
-      return {
-        reply:
-          "Mostly helping useful ideas move toward action.\n" +
-          "I help surface builders, connect ideas, and make the next step clearer.\n" +
-          "When needed, I can also route discussion toward mission, knowledge, or external info flows.\n" +
-          "That is the main operating role.",
-        suggestedAction: "none",
-      };
-    }
-
-    return {
-      reply:
-        "Mostly helping useful ideas move toward action.\n" +
-        "I help surface builders, connect ideas, and make the next step clearer.\n" +
-        "When needed, I can also route discussion toward mission, knowledge, or external info flows.\n" +
-        "That is the main operating role.",
-      suggestedAction: "none",
-    };
-  }
-
-  if (looksLikeCAQuestion(msg) || msg === "ca" || msg.includes("ca ")) {
-    const hasSol = Boolean(WAOC_CA_SOL);
-    const hasBsc = Boolean(WAOC_CA_BSC);
-
-    if (community.isWAOC && (hasSol || hasBsc)) {
-      const lines: string[] = [];
-      if (hasSol) lines.push(`Solana CA: ${WAOC_CA_SOL}`);
-      if (hasBsc) lines.push(`BSC CA: ${WAOC_CA_BSC}`);
-
-      if (lang === "zh") {
-        return {
-          reply:
-            "以下是当前已配置的官方合约地址。\n" +
-            lines.map((x) => `- ${x}`).join("\n") +
-            "\n请只以官方渠道为准。\n不要相信私聊转发。",
-          suggestedAction: actionLinks,
-        };
-      }
-
-      if (lang === "mixed") {
-        return {
-          reply:
-            "These are the currently configured official contract addresses.\n" +
-            lines.map((x) => `- ${x}`).join("\n") +
-            "\nOnly trust official channels.\nDo not trust random DMs.",
-          suggestedAction: actionLinks,
-        };
-      }
-
-      return {
-        reply:
-          "These are the currently configured official contract addresses.\n" +
-          lines.map((x) => `- ${x}`).join("\n") +
-          "\nOnly trust official channels.\nDo not trust random DMs.",
-        suggestedAction: actionLinks,
-      };
-    }
-
-    if (lang === "zh") {
-      return {
-        reply:
-          "我不会猜或乱编合约地址。\n" +
-          "这类信息应只以官方渠道为准。\n" +
-          "建议查看置顶或官方入口。\n" +
-          "这里先走官方链接。",
-        suggestedAction: actionLinks,
-      };
-    }
-
-    if (lang === "mixed") {
-      return {
-        reply:
-          "I won’t guess or fabricate a contract address.\n" +
-          "This should come only from official channels.\n" +
-          "Check pinned information or official links.\n" +
-          "Routing to official entry points is safer.",
-        suggestedAction: actionLinks,
-      };
-    }
-
-    return {
-      reply:
-        "I won’t guess or fabricate a contract address.\n" +
-        "This should come only from official channels.\n" +
-        "Check pinned information or official links.\n" +
-        "Routing to official entry points is safer.",
-      suggestedAction: actionLinks,
-    };
-  }
-
-  return null;
-}
-
-/* =========================
-   Constraint guard
-========================= */
-
-function applyConstraintsOrFallback(args: {
-  data: WaocChatData;
-  input: WaocChatInput;
-}): { ok: true; data: WaocChatData } {
-  const data = args.data || { reply: "", suggestedAction: "none" };
-  const input = args.input || ({} as any);
-
-  const check = checkWaocChatConstraints({
-    data,
-    userMessage: input.message,
-    lang: toConstraintLang(input.lang),
-  });
-
-  if (check.ok) {
-    return {
-      ok: true,
-      data: {
-        reply: norm(check.data?.reply ?? data.reply),
-        suggestedAction: ensureAllowedAction(
-          check.data?.suggestedAction ?? data.suggestedAction
-        ),
-      },
-    };
-  }
-
-  const lang: "en" | "zh" | "mixed" =
-    input.lang === "zh" ? "zh" : input.lang === "mixed" ? "mixed" : "en";
-
-  return {
-    ok: true,
-    data: {
-      reply:
-        norm(data.reply) ||
-        (lang === "zh"
-          ? "收到。\n先保留这个方向。\n需要时再继续推进。"
-          : lang === "mixed"
-          ? "Got it.\nKeeping this direction noted.\nWe can push it further when needed."
-          : "Got it.\nKeeping this direction noted.\nWe can push it further when needed."),
-      suggestedAction: ensureAllowedAction(data.suggestedAction),
-    },
-  };
-}
-
-/* =========================
-   Post-process helpers
-========================= */
-
-function appendUniqueLine(reply: string, line: string) {
-  const a = norm(reply);
-  const b = norm(line);
-  if (!a) return b;
-  if (!b) return a;
-  if (a.includes(b)) return a;
-  return `${a}\n${b}`.trim();
-}
-
-function makeMinimalReply(
-  lang: "en" | "zh" | "mixed",
-  kind: "noise" | "tense" | "cooling"
-): string {
-  if (lang === "zh") {
-    if (kind === "noise") return "先把重点放回一个更具体的问题。\n现在不适合把话题继续发散。";
-    if (kind === "tense") return "先冷静一下。\n尽量把讨论拉回事实和问题本身。";
-    return "收到。\n先保持简洁。\n等信息更清楚再展开。";
-  }
-
-  if (lang === "mixed") {
-    if (kind === "noise") return "Let’s bring this back to one concrete problem.\n先把重点拉回一个更具体的问题。";
-    if (kind === "tense") return "Let’s keep this calm and grounded in facts.\n先冷静一点，回到事实本身。";
-    return "Got it.\nKeeping this brief for now.\nWe can expand once the signal is clearer.";
-  }
-
-  if (kind === "noise") return "Let’s bring this back to one concrete problem.\nThis is not the best moment to widen the thread.";
-  if (kind === "tense") return "Let’s keep this calm and grounded in facts.\nThat will make the discussion more useful.";
-  return "Got it.\nKeeping this brief for now.\nWe can expand once the signal is clearer.";
-}
-
-function shouldOverrideWithMinimalReply(args: {
-  currentReply: string;
-  lang: "en" | "zh" | "mixed";
-  intelligence: CoordinationIntelligence;
-  signals: CommunitySignals;
-}): string | null {
-  const { currentReply, lang, intelligence, signals } = args;
-
-  if (
-    signals.meaningSignal ||
-    signals.verificationSignal ||
-    signals.capabilityQuestionSignal ||
-    signals.communityIdentityQuestionSignal ||
-    signals.systemQuestionSignal ||
-    signals.directQuestionSignal ||
-    intelligence.responseDepth === "full"
-  ) {
-    return null;
-  }
-
-  if (!intelligence.shouldStayMinimal) return null;
-
-  if (intelligence.roomState === "tense") {
-    return currentReply || makeMinimalReply(lang, "tense");
-  }
-  if (intelligence.roomState === "noisy" || intelligence.momentum === "repetitive") {
-    return currentReply || makeMinimalReply(lang, "noise");
-  }
-  if (intelligence.momentum === "cooling") {
-    return currentReply || makeMinimalReply(lang, "cooling");
-  }
-  return null;
-}
-
-function makeWorkflowPaddingLine(first: string, lang: "en" | "zh" | "mixed" = "en") {
-  const f = lower(first);
-
-  if (lang === "zh") {
-    if (/价格|币价|市值|行情/.test(f)) return "如果要实时数据，还需要接价格源。";
-    if (/新闻|动态|公告/.test(f)) return "如果要最新动态，还需要接新闻源。";
-    if (/推特|账号|推文|x/.test(f)) return "如果要继续分析，最好直接读取该账号内容。";
-    if (/网页|文章|链接|网站/.test(f)) return "如果要更准确总结，最好先抓取正文。";
-    if (/任务|mission/.test(f)) return "这个方向可以继续收敛成一个更具体的任务。";
-    return "这个方向可以继续往下展开。";
-  }
-
-  if (lang === "mixed") {
-    if (/price|market cap|chart|valuation|价格|币价|市值|行情/.test(f)) {
-      return "A live price source would make this more useful.\n如果要实时数据，还需要接价格源。";
-    }
-    if (/news|update|announcement|新闻|动态|公告/.test(f)) {
-      return "A live news source would make this more reliable.\n如果要最新动态，还需要接新闻源。";
-    }
-    if (/twitter|x|tweet|account|推特|账号|推文/.test(f)) {
-      return "Reading the actual account content would make this stronger.\n如果要继续分析，最好直接读取该账号内容。";
-    }
-    if (/website|web|article|link|网页|文章|链接|网站/.test(f)) {
-      return "Fetching the page content would make this more accurate.\n如果要更准确总结，最好先抓取正文。";
-    }
-    return "This could be taken one step further.\n这个方向可以继续往下展开。";
-  }
-
-  if (/price|market cap|chart|valuation/.test(f)) {
-    return "A live price source would make this more useful.";
-  }
-  if (/news|update|announcement/.test(f)) {
-    return "A live news source would make this more reliable.";
-  }
-  if (/twitter|x|tweet|account/.test(f)) {
-    return "Reading the actual account content would make this stronger.";
-  }
-  if (/website|web|article|link/.test(f)) {
-    return "Fetching the page content would make this more accurate.";
-  }
-  if (/mission|task/.test(f)) {
-    return "This could be narrowed into a more concrete task.";
-  }
-
-  return "This could be taken one step further.";
-}
-
-function finalizeReplyLines(
-  reply: string,
-  lang: "en" | "zh" | "mixed" = "en"
-): string {
-  const lines = norm(reply)
-    .split("\n")
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-  if (!lines.length) {
-    return lang === "zh"
-      ? "收到。\n这个方向可以继续往下展开。"
-      : lang === "mixed"
-      ? "Got it.\n这个方向可以继续往下展开。"
-      : "Got it.\nThis could be taken one step further.";
-  }
-
-  const clipped = lines.slice(0, 5);
-
-  if (clipped.length >= 2) return clipped.join("\n");
-
-  const one = clipped[0];
-  return [one, makeWorkflowPaddingLine(one, lang)].join("\n");
-}
+  (globalThis as any).__waocIgniteMapV5 ||
+  ((globalThis as any).__waocIgniteMapV5 = new Map<string, number>());
 
 /* =========================
    Workflow
@@ -1991,8 +2051,8 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
           : "en";
 
       const community = inferCommunityContext(ctx.input);
-
       const quick = quickAutoReply({ raw, msg, lang, community });
+
       if (quick) {
         ctx.data = applyConstraintsOrFallback({
           data: quick,
@@ -2012,14 +2072,8 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         const lang: "en" | "zh" | "mixed" =
           input.lang === "zh" ? "zh" : input.lang === "mixed" ? "mixed" : "en";
 
-        const signals = detectCommunitySignals(
-          input.message,
-          input.recentMessages ?? ""
-        );
-        const network = inferNetworkContext(
-          input.message,
-          input.recentMessages ?? ""
-        );
+        const signals = detectCommunitySignals(input.message, input.recentMessages ?? "");
+        const network = inferNetworkContext(input.message, input.recentMessages ?? "");
         const intelligence = inferCoordinationIntelligence({
           input,
           messageRaw: input.message,
@@ -2027,16 +2081,22 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
           signals,
           network,
         });
+        const route = inferRouteDecision({
+          raw: input.message,
+          msg: lower(input.message),
+          signals,
+          network,
+          intelligence,
+        });
         const community = inferCommunityContext(input);
 
         return {
           message:
             norm(input.message) +
             buildSignalHint(signals, lang) +
-            buildRuntimeHint(network, intelligence, lang) +
+            buildRuntimeHint(network, intelligence, route, lang) +
             buildInteractionHint(intelligence, lang) +
-            buildCommunityContextHint(community, lang) +
-            buildOperatorHint(signals, intelligence, lang),
+            buildCommunityContextHint(community, lang),
 
           context: norm(input.context ?? "general"),
           lang: norm(input.lang ?? "en"),
@@ -2068,6 +2128,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
           coordinationIntelligence: safeJson(intelligence),
           communityContext: safeJson(community),
           detectedSignals: safeJson(signals),
+          aiRouteDecision: safeJson(route),
         };
       },
     }),
@@ -2097,26 +2158,14 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         "- reply is required and must directly answer the user.\n" +
         "- Keep reply output between 2 and 5 concise lines.\n" +
         "- Think like an autonomous community coordination brain, not a generic chatbot.\n" +
-        "- Detect builder signals, contributor signals, collaboration signals, mission opportunity, community momentum, news intent, price intent, X intent, and web intent.\n" +
-        "- Distinguish system questions from community questions, capability questions, growth questions, and external information requests.\n" +
-        "- If the user asks a direct question, answer clearly and completely enough to be useful.\n" +
-        "- For system questions, explain mechanism / flow / operating logic.\n" +
-        "- For community questions, explain identity / focus / purpose.\n" +
-        "- For capability questions, answer naturally and concretely without sounding like support documentation.\n" +
-        "- In builder contexts, avoid empty praise. Prefer one practical follow-up question or one concrete next step.\n" +
-        "- Good builder follow-up examples: 'What would it track first?' 'Who would use it first?' 'What problem would it solve first?'\n" +
-        "- Ask at most one follow-up question in builder mode.\n" +
-        "- If a mission opportunity exists, it is acceptable to say so briefly.\n" +
-        "- In growth contexts, answer practically with steps / priorities rather than vague encouragement.\n" +
+        "- If the user asks a direct question, answer clearly.\n" +
+        "- For capability questions, answer capability directly. Never route to price/news/x/web.\n" +
+        "- For community identity questions, explain what the community/project is.\n" +
+        "- For system questions, explain the operating logic.\n" +
         "- For news / price / X / web requests, do not fabricate facts. If not verifiable, say so briefly and route appropriately.\n" +
-        "- Prefer one concrete next step over vague motivation.\n" +
-        "- Respect room state and momentum when shaping the reply.\n" +
-        "- In noisy, repetitive, or cooling situations, keep replies shorter and lighter.\n" +
-        "- Keep replies natural, practical, socially aware, and high-signal.\n" +
-        "- Avoid support-agent or corporate language such as 'It sounds like', 'As an AI', 'I can help with', 'This includes', 'Feel free to ask', 'facilitate coordination', 'foster collaboration', 'support builders and contributors', 'unlock potential', or 'drive engagement'.\n" +
-        "- Do not assume every community is WAOC.\n" +
+        "- Do not let recentMessages override the current message's direct intent.\n" +
         "- If WAOC is in scope, WAOC MUST be expanded ONLY as 'We Are One Connection'. Never redefine the acronym.\n" +
-        "- Never fabricate CA/price/news/partnership/listing. If not verifiable, say you can't verify and route accordingly.\n",
+        "- Never fabricate CA/price/news/partnership/listing.\n",
     }),
 
     parseJsonStep<WaocChatInput, WaocChatData>(),
@@ -2138,8 +2187,8 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
           : ctx.input.lang === "mixed"
           ? "mixed"
           : "en";
-      const recentMessages = getRecentMessages(ctx);
 
+      const recentMessages = getRecentMessages(ctx);
       const community = inferCommunityContext(ctx.input);
       const signals = detectCommunitySignals(raw, recentMessages);
       const network = inferNetworkContext(raw, recentMessages);
@@ -2151,166 +2200,54 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         network,
       });
 
-      const routes: Array<{
-        hit: (
-          s: string,
-          sig: CommunitySignals,
-          net: NetworkContext,
-          intel: CoordinationIntelligence,
-          comm: CommunityContext
-        ) => boolean;
-        task: string;
-        mapInput: () => any;
-        preferredAction?: WaocSuggestedAction;
-      }> = [
-        {
-          hit: (s) => looksLikeValuationRequest(s),
-          task: "waoc_brain",
-          preferredAction: "/knowledge",
-          mapInput: () => ({
-            question: raw,
-            lang,
-            communityName: community.communityName,
-            communityNarrative: community.communityNarrative,
-          }),
-        },
-        {
-          hit: (s) => looksLikeNarrativeRequest(s),
-          task: "waoc_narrative",
-          preferredAction: "/knowledge",
-          mapInput: () => ({
-            topic: raw,
-            depth: "short",
-            lang,
-            communityName: community.communityName,
-            communityNarrative: community.communityNarrative,
-          }),
-        },
-        {
-          hit: (s) => looksLikeExplicitTweetRequest(s),
-          task: "tweet",
-          preferredAction: "/growth",
-          mapInput: () => ({
-            message: raw,
-            lang,
-            communityName: community.communityName,
-            communityNarrative: community.communityNarrative,
-          }),
-        },
-        {
-          hit: (s) => looksLikeExplicitMissionRequest(s),
-          task: "mission",
-          preferredAction: "/mission",
-          mapInput: () => ({
-            message: raw,
-            lang,
-            communityName: community.communityName,
-            communityFocus: community.communityFocus,
-          }),
-        },
-        {
-          hit: (s) => looksLikeReportIntent(s),
-          task: "report_agent",
-          preferredAction: "/report",
-          mapInput: () => ({
-            message: raw,
-            lang,
-            communityName: community.communityName,
-          }),
-        },
-        {
-          hit: (_s, sig) => sig.newsSignal,
-          task: "news_agent",
-          preferredAction: "/news",
-          mapInput: () => ({
-            message: raw,
-            lang,
-            communityName: community.communityName,
-          }),
-        },
-        {
-          hit: (_s, sig) => sig.pricingSignal,
-          task: "price_agent",
-          preferredAction: "/price",
-          mapInput: () => ({
-            message: raw,
-            lang,
-            communityName: community.communityName,
-          }),
-        },
-        {
-          hit: (_s, sig) => sig.xSignal,
-          task: "x_agent",
-          preferredAction: "/x",
-          mapInput: () => ({
-            message: raw,
-            lang,
-            communityName: community.communityName,
-          }),
-        },
-        {
-          hit: (_s, sig) => sig.webSignal,
-          task: "web_agent",
-          preferredAction: "/web",
-          mapInput: () => ({
-            message: raw,
-            lang,
-            communityName: community.communityName,
-          }),
-        },
-        {
-          hit: (s, sig, _net, intel) =>
-            looksLikeGrowthIntent(s) || sig.growthSignal || intel.questionType === "growth",
-          task: "growth_agent",
-          preferredAction: "/growth",
-          mapInput: () => ({
-            message: raw,
-            lang,
-            communityName: community.communityName,
-            communityFocus: community.communityFocus,
-          }),
-        },
-        {
-          hit: (_s, sig, _net, intel) =>
-            sig.knowledgeSignal ||
-            sig.insightSignal ||
-            sig.systemQuestionSignal ||
-            intel.questionType === "system",
-          task: "knowledge_agent",
-          preferredAction: "/knowledge",
-          mapInput: () => ({
-            message: raw,
-            lang,
-            communityName: community.communityName,
-          }),
-        },
-        {
-          hit: (s, sig, _net, intel) =>
-            looksLikeBuilderIntent(s) ||
-            sig.builderSignal ||
-            sig.builderQuestionSignal ||
-            sig.collaborationSignal ||
-            intel.missionOpportunity ||
-            intel.gap === "mission_without_owner",
-          task: "builder_agent",
-          preferredAction: "/builders",
-          mapInput: () => ({
-            message: raw,
-            lang,
-            communityName: community.communityName,
-            communityFocus: community.communityFocus,
-          }),
-        },
-      ];
+      const route = inferRouteDecision({
+        raw,
+        msg,
+        signals,
+        network,
+        intelligence,
+      });
 
-      const match = routes.find((r) =>
-        r.hit(msg, signals, network, intelligence, community)
-      );
-      console.log("match task =", match?.task);
-      
-      if (match) {
+      console.log("waoc_chat_v5.route =", {
+        msg,
+        intent: route.intent,
+        confidence: route.confidence,
+        reason: route.reason,
+        task: route.task || "none",
+      });
+
+      // task routing
+      if (route.task) {
         try {
-          const r = await runTask(match.task, match.mapInput(), {
+          let taskInput: any = {
+            message: raw,
+            lang,
+            communityName: community.communityName,
+            communityIdentity: community.communityIdentity,
+            communityNarrative: community.communityNarrative,
+            communityFocus: community.communityFocus,
+          };
+
+          if (route.intent === "valuation") {
+            taskInput = {
+              question: raw,
+              lang,
+              communityName: community.communityName,
+              communityNarrative: community.communityNarrative,
+            };
+          }
+
+          if (route.intent === "narrative") {
+            taskInput = {
+              topic: raw,
+              depth: "short",
+              lang,
+              communityName: community.communityName,
+              communityNarrative: community.communityNarrative,
+            };
+          }
+
+          const r = await runTask(route.task, taskInput, {
             templateVersion: WAOC_CHAT_TEMPLATE_VERSION,
           });
 
@@ -2324,45 +2261,32 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
             );
 
             if (answer) {
-              const next: WaocChatData = {
-                ...ctx.data,
-                reply: answer,
-                suggestedAction: ensureAllowedAction(
-                  r.data?.suggestedAction ??
-                    match.preferredAction ??
-                    ctx.data?.suggestedAction ??
-                    intelligence.preferredAction
-                ),
-              };
-
-              if (Array.isArray(r.data?.links) && r.data.links.length) {
-                next.suggestedAction = "/links";
-              }
-
-              if (intelligence.shouldAvoidRouting && next.suggestedAction === "none") {
-                next.suggestedAction = "none";
-              }
-
               ctx.data = applyConstraintsOrFallback({
-                data: next,
+                data: {
+                  ...ctx.data,
+                  reply: answer,
+                  suggestedAction: ensureAllowedAction(
+                    r.data?.suggestedAction ?? route.suggestedAction
+                  ),
+                },
                 input: ctx.input,
               }).data;
+            } else {
+              ctx.data.suggestedAction = route.suggestedAction;
             }
+          } else {
+            ctx.data.suggestedAction = route.suggestedAction;
           }
         } catch {
-          ctx.data = applyConstraintsOrFallback({
-            data: ctx.data,
-            input: ctx.input,
-          }).data;
+          ctx.data.suggestedAction = route.suggestedAction;
         }
       } else {
         if ((ctx.data.suggestedAction ?? "none") === "none") {
-          if (!intelligence.shouldAvoidRouting) {
-            ctx.data.suggestedAction = intelligence.preferredAction;
-          }
+          ctx.data.suggestedAction = route.suggestedAction;
         }
       }
 
+      // minimal override
       {
         const maybeMinimal = shouldOverrideWithMinimalReply({
           currentReply: norm(ctx.data.reply),
@@ -2379,179 +2303,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         }
       }
 
-      if (
-        intelligence.gap !== "none" &&
-        !shouldSkipCoordinationGap(signals, msg) &&
-        !intelligence.shouldStayMinimal &&
-        intelligence.responseDepth !== "full" &&
-        Math.random() < COORDINATION_GAP_APPEND_RATE
-      ) {
-        const current = norm(ctx.data.reply);
-        const gapLine =
-          lang === "zh"
-            ? intelligence.gap === "builder_without_mission"
-              ? "这里已经有 builder 信号了，但还没有清晰任务。"
-              : intelligence.gap === "mission_without_owner"
-              ? "这个方向已经像任务了，但还没有明确 owner。"
-              : intelligence.gap === "knowledge_not_captured"
-              ? "这里已经有可复用的信息了，但还没有沉淀。"
-              : intelligence.gap === "growth_without_execution"
-              ? "这里已经有增长想法了，但还缺执行路径。"
-              : "这个问题重复出现了，但还没有明确 owner。"
-            : lang === "mixed"
-            ? intelligence.gap === "builder_without_mission"
-              ? "There is builder signal here, but no clear mission yet.\n这里已经有 builder 信号了，但还没有清晰任务。"
-              : intelligence.gap === "mission_without_owner"
-              ? "This already feels like a mission, but no clear owner yet.\n这个方向已经像任务了，但还没有明确 owner。"
-              : intelligence.gap === "knowledge_not_captured"
-              ? "There is reusable knowledge here, but it is not captured yet.\n这里已经有可复用的信息了，但还没有沉淀。"
-              : intelligence.gap === "growth_without_execution"
-              ? "There is a growth idea here, but it still lacks execution.\n这里已经有增长想法了，但还缺执行路径。"
-              : "This issue keeps showing up, but there is still no clear owner.\n这个问题重复出现了，但还没有明确 owner。"
-            : intelligence.gap === "builder_without_mission"
-            ? "There is builder signal here, but no clear mission yet."
-            : intelligence.gap === "mission_without_owner"
-            ? "This already feels like a mission, but no clear owner yet."
-            : intelligence.gap === "knowledge_not_captured"
-            ? "There is reusable knowledge here, but it is not captured yet."
-            : intelligence.gap === "growth_without_execution"
-            ? "There is a growth idea here, but it still lacks execution."
-            : "This issue keeps showing up, but there is still no clear owner.";
-
-        if (
-          current &&
-          !current.toLowerCase().includes("no clear mission") &&
-          !current.includes("还没有清晰任务")
-        ) {
-          ctx.data.reply = `${current}\n${gapLine}`.trim();
-        }
-      }
-
-      if (
-        !signals.meaningSignal &&
-        !signals.verificationSignal &&
-        !signals.capabilityQuestionSignal &&
-        !signals.communityIdentityQuestionSignal &&
-        !signals.systemQuestionSignal &&
-        !signals.directQuestionSignal &&
-        !signals.newsSignal &&
-        !signals.pricingSignal &&
-        !signals.xSignal &&
-        !signals.webSignal &&
-        !intelligence.shouldStayMinimal &&
-        intelligence.responseDepth !== "full" &&
-        Math.random() < MOMENTUM_APPEND_RATE
-      ) {
-        const current = norm(ctx.data.reply);
-        let extra = "";
-
-        if (lang === "zh") {
-          if (intelligence.v22Momentum === "building") extra = "这个方向已经有继续推进的势头。";
-          else if (intelligence.v22Momentum === "focused") extra = "这个讨论已经比较聚焦。";
-          else if (intelligence.v22Momentum === "fragmented") extra = "可以先把它收敛到一个更具体的问题。";
-          else if (intelligence.v22Momentum === "emerging") extra = "这里已经有一点成形的势头了。";
-        } else if (lang === "mixed") {
-          if (intelligence.v22Momentum === "building")
-            extra = "There is real momentum here.\n这个方向已经有继续推进的势头。";
-          else if (intelligence.v22Momentum === "focused")
-            extra = "This thread is already fairly focused.\n这个讨论已经比较聚焦。";
-          else if (intelligence.v22Momentum === "fragmented")
-            extra = "It may help to narrow this to one concrete question.\n可以先把它收敛到一个更具体的问题。";
-          else if (intelligence.v22Momentum === "emerging")
-            extra = "This is starting to become actionable.\n这里已经有一点成形的势头了。";
-        } else {
-          if (intelligence.v22Momentum === "building")
-            extra = "There is real momentum here.";
-          else if (intelligence.v22Momentum === "focused")
-            extra = "This thread is already fairly focused.";
-          else if (intelligence.v22Momentum === "fragmented")
-            extra = "It may help to narrow this to one concrete question.";
-          else if (intelligence.v22Momentum === "emerging")
-            extra = "This is starting to become actionable.";
-        }
-
-        if (extra) {
-          ctx.data.reply = appendUniqueLine(current, extra);
-        }
-      }
-
-      if (
-        intelligence.missionOpportunity &&
-        !signals.directQuestionSignal &&
-        !signals.newsSignal &&
-        !signals.pricingSignal &&
-        !signals.xSignal &&
-        !signals.webSignal &&
-        !intelligence.shouldStayMinimal &&
-        intelligence.responseDepth !== "full"
-      ) {
-        const current = norm(ctx.data.reply);
-        const loweredCurrent = lower(current);
-        const extra =
-          lang === "zh"
-            ? "这个方向已经有点像一个可以执行的小 mission 了。"
-            : lang === "mixed"
-            ? "This already feels actionable enough to become a small mission.\n这个方向已经有点像一个可以执行的小 mission 了。"
-            : "This already feels actionable enough to become a small mission.";
-
-        if (
-          !loweredCurrent.includes("mission") &&
-          !current.includes("小 mission")
-        ) {
-          ctx.data.reply = appendUniqueLine(current, extra);
-        }
-      }
-
-      if (
-        signals.contributorSignal &&
-        !intelligence.shouldStayMinimal &&
-        intelligence.responseDepth !== "full"
-      ) {
-        const current = norm(ctx.data.reply);
-        const extra =
-          lang === "zh"
-            ? "这给了大家一个更具体的推进点。"
-            : lang === "mixed"
-            ? "That gives people something concrete to build on.\n这给了大家一个更具体的推进点。"
-            : "That gives people something concrete to build on.";
-
-        ctx.data.reply = appendUniqueLine(current, extra);
-      }
-
-      if (signals.crossCommunityHint && !intelligence.shouldStayMinimal) {
-        const current = norm(ctx.data.reply);
-        const extra =
-          lang === "zh"
-            ? "这里也许有跨社区协作机会。"
-            : lang === "mixed"
-            ? "There may be a cross-community coordination angle here.\n这里也许有跨社区协作机会。"
-            : "There may be a cross-community coordination angle here.";
-
-        ctx.data.reply = appendUniqueLine(current, extra);
-      }
-
-      if (
-        signals.selfOrganizingSignal &&
-        !signals.meaningSignal &&
-        !signals.verificationSignal &&
-        !signals.newsSignal &&
-        !signals.pricingSignal &&
-        !signals.xSignal &&
-        !signals.webSignal &&
-        !intelligence.shouldStayMinimal &&
-        network.coordinationState === "organization_window"
-      ) {
-        const current = norm(ctx.data.reply);
-        const extra =
-          lang === "zh"
-            ? "先明确一个最小下一步会更容易推进。"
-            : lang === "mixed"
-            ? "It may help to define one minimal next step.\n先明确一个最小下一步会更容易推进。"
-            : "It may help to define one minimal next step.";
-
-        ctx.data.reply = appendUniqueLine(current, extra);
-      }
-
+      // practical follow-up for builder-like situations
       if (
         (signals.builderSignal || signals.missionOpportunitySignal || signals.collaborationSignal) &&
         !signals.directQuestionSignal &&
@@ -2567,43 +2319,65 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
 
         const alreadyHasFollowUp =
           /\?$/.test(current) ||
-          loweredCurrent.includes("what would it") ||
-          loweredCurrent.includes("who would use it") ||
-          loweredCurrent.includes("what problem would") ||
-          loweredCurrent.includes("你希望它先") ||
-          loweredCurrent.includes("谁会先用");
+          loweredCurrent.includes("what problem would it solve first") ||
+          loweredCurrent.includes("你希望它先解决什么问题");
 
         if (!alreadyHasFollowUp) {
           const followUp =
             lang === "zh"
               ? "你希望它先解决什么问题？"
-              : lang === "mixed"
-              ? "What problem would it solve first?\n你希望它先解决什么问题？"
               : "What problem would it solve first?";
 
           ctx.data.reply = appendUniqueLine(current, followUp);
         }
       }
 
-      if (
-        intelligence.shouldLightRedirect &&
-        !signals.meaningSignal &&
-        !signals.verificationSignal &&
-        !signals.capabilityQuestionSignal &&
-        !signals.communityIdentityQuestionSignal &&
-        !signals.systemQuestionSignal &&
-        !signals.directQuestionSignal &&
-        Math.random() < LIGHT_REDIRECT_RATE
-      ) {
-        const current = norm(ctx.data.reply);
-        const extra =
-          lang === "zh"
-            ? "先把重点放回一个更具体的问题。"
-            : lang === "mixed"
-            ? "Let’s bring this back to one concrete problem.\n先把重点拉回一个更具体的问题。"
-            : "Let’s bring this back to one concrete problem.";
+      // low activity ignite
+      try {
+        const state = inferGroupState(recentMessages);
 
-        ctx.data.reply = appendUniqueLine(current, extra);
+        if (
+          shouldIgnite(state) &&
+          !signals.meaningSignal &&
+          !signals.verificationSignal &&
+          !signals.capabilityQuestionSignal &&
+          !signals.communityIdentityQuestionSignal &&
+          !signals.systemQuestionSignal &&
+          !signals.directQuestionSignal &&
+          !signals.newsSignal &&
+          !signals.pricingSignal &&
+          !signals.xSignal &&
+          !signals.webSignal &&
+          !intelligence.shouldStayMinimal &&
+          intelligence.responseDepth !== "full"
+        ) {
+          const chatId = getChatId(ctx);
+          const key = `waoc:v5:ignite:last:${chatId}`;
+
+          const now = Date.now();
+          const COOLDOWN_MS = 5 * 60 * 1000;
+          const last = Number(__igniteMap.get(key) || 0);
+          const cooldownOk = !last || now - last >= COOLDOWN_MS;
+
+          if (cooldownOk) {
+            const seedBase = String(chatId)
+              .split("")
+              .reduce((a, c) => a + c.charCodeAt(0), 0);
+            const seed = seedBase + Math.floor(now / COOLDOWN_MS);
+
+            const ignition = pickIgnitionLine(
+              lang,
+              network.coordinationState,
+              community,
+              seed
+            );
+
+            ctx.data.reply = appendUniqueLine(norm(ctx.data.reply), ignition);
+            __igniteMap.set(key, now);
+          }
+        }
+      } catch {
+        // ignore
       }
 
       if (intelligence.shouldAvoidRouting && intelligence.preferredAction === "none") {
@@ -2621,71 +2395,6 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         ) {
           ctx.data.suggestedAction = "none";
         }
-      }
-
-      try {
-        const state = inferGroupState(recentMessages);
-
-        if (
-          state !== "conflict" &&
-          state !== "fud_risk" &&
-          state !== "high_noise" &&
-          state !== "hype_overheat"
-        ) {
-          if (
-            shouldIgnite(state) &&
-            !signals.meaningSignal &&
-            !signals.verificationSignal &&
-            !signals.capabilityQuestionSignal &&
-            !signals.communityIdentityQuestionSignal &&
-            !signals.systemQuestionSignal &&
-            !signals.directQuestionSignal &&
-            !signals.newsSignal &&
-            !signals.pricingSignal &&
-            !signals.xSignal &&
-            !signals.webSignal &&
-            !intelligence.shouldStayMinimal &&
-            intelligence.responseDepth !== "full"
-          ) {
-            const chatId = getChatId(ctx);
-            const key = `waoc:ignite:last:${chatId}`;
-
-            const now = Date.now();
-            const COOLDOWN_MS = 5 * 60 * 1000;
-            const last = Number(__igniteMap.get(key) || 0);
-            const cooldownOk = !last || now - last >= COOLDOWN_MS;
-
-            if (cooldownOk) {
-              const seedBase = String(chatId)
-                .split("")
-                .reduce((a, c) => a + c.charCodeAt(0), 0);
-              const seed = seedBase + Math.floor(now / COOLDOWN_MS);
-              const ignition = pickIgnitionLine(
-                lang,
-                network.coordinationState,
-                community,
-                seed
-              );
-
-              const next: WaocChatData = {
-                ...ctx.data,
-                reply: `${norm(ctx.data?.reply)}\n${ignition}`.trim(),
-                suggestedAction: ensureAllowedAction(
-                  ctx.data?.suggestedAction ?? "none"
-                ),
-              };
-
-              ctx.data = applyConstraintsOrFallback({
-                data: next,
-                input: ctx.input,
-              }).data;
-
-              __igniteMap.set(key, now);
-            }
-          }
-        }
-      } catch {
-        // ignore
       }
 
       ctx.data.reply = finalizeReplyLines(ctx.data.reply, lang);
