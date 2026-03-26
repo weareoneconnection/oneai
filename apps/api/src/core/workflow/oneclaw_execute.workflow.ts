@@ -6,10 +6,31 @@ import { generateLLMStep } from "./steps/generateLLMStep.js";
 import { parseJsonStep } from "./steps/parseJsonStep.js";
 import { validateSchemaStep } from "./steps/validateSchemaStep.js";
 import { refineJsonStep } from "./steps/refineJsonStep.js";
+
 import { registerWorkflow } from "./registry.js";
 import { oneclawExecuteValidator } from "../validators/oneclawExecuteValidator.js";
 import { checkOneClawExecuteConstraints } from "../constraints/oneclawExecuteConstraints.js";
-import { executeOneClawStep } from "./steps/executeOneClawStep.js";
+
+export type OneClawAction =
+  | "api.request"
+  | "browser.open"
+  | "browser.screenshot"
+  | "file.read"
+  | "file.write"
+  | "message.send"
+  | "social.post";
+
+export type OneClawStep = {
+  id: string;
+  action: OneClawAction;
+  input: Record<string, unknown>;
+  dependsOn?: string[];
+};
+
+export type OneClawTask = {
+  taskName: string;
+  steps: OneClawStep[];
+};
 
 export type OneClawExecuteInput = {
   message: string;
@@ -21,30 +42,51 @@ export type OneClawExecuteInput = {
 export type OneClawExecuteData = {
   reply: string;
   shouldExecute: boolean;
-  oneclawTask: {
-    taskName: string;
-    steps: Array<{
-      id: string;
-      action:
-        | "api.request"
-        | "browser.open"
-        | "browser.screenshot"
-        | "file.read"
-        | "file.write"
-        | "message.send"
-        | "social.post";
-      input: Record<string, unknown>;
-      dependsOn?: string[];
-    }>;
-  } | null;
+  oneclawTask: OneClawTask | null;
 };
 
-type OneClawExecuteCtx = WorkflowContext<OneClawExecuteInput, OneClawExecuteData> & {
+type OneClawExecuteCtx = WorkflowContext<
+  OneClawExecuteInput,
+  OneClawExecuteData
+> & {
   templateVersion: number;
-  meta?: {
-    oneclawResult?: unknown;
-  };
 };
+
+function normalizeOneClawPlan(data: any): OneClawExecuteData {
+  const reply = String(data?.reply ?? "").trim();
+  const shouldExecute = Boolean(data?.shouldExecute);
+
+  let oneclawTask: OneClawTask | null = data?.oneclawTask ?? null;
+
+  if (!shouldExecute) {
+    oneclawTask = null;
+  }
+
+  if (shouldExecute && oneclawTask) {
+    oneclawTask = {
+      taskName: String(oneclawTask.taskName ?? "oneclaw_task").trim() || "oneclaw_task",
+      steps: Array.isArray(oneclawTask.steps)
+        ? oneclawTask.steps.map((step: any, index: number) => ({
+            id: String(step?.id ?? `step_${index + 1}`).trim() || `step_${index + 1}`,
+            action: String(step?.action ?? "").trim() as OneClawAction,
+            input:
+              step?.input && typeof step.input === "object" && !Array.isArray(step.input)
+                ? step.input
+                : {},
+            dependsOn: Array.isArray(step?.dependsOn)
+              ? step.dependsOn.map((v: unknown) => String(v))
+              : [],
+          }))
+        : [],
+    };
+  }
+
+  return {
+    reply,
+    shouldExecute,
+    oneclawTask,
+  };
+}
 
 export const oneclawExecuteWorkflowDef: WorkflowDefinition<OneClawExecuteCtx> = {
   name: "oneclaw_execute_workflow",
@@ -58,48 +100,59 @@ export const oneclawExecuteWorkflowDef: WorkflowDefinition<OneClawExecuteCtx> = 
         message: input.message,
         lang: input.lang ?? "mixed",
         defaultChatId: input.defaultChatId ?? "",
-        defaultScreenshotPath: input.defaultScreenshotPath ?? "screenshot.png"
-      })
+        defaultScreenshotPath: input.defaultScreenshotPath ?? "screenshot.png",
+      }),
     }),
 
     generateLLMStep<OneClawExecuteInput, OneClawExecuteData>(),
+
     parseJsonStep<OneClawExecuteInput, OneClawExecuteData>(),
-    validateSchemaStep<OneClawExecuteInput, OneClawExecuteData>(oneclawExecuteValidator),
+
+    async (ctx: OneClawExecuteCtx) => {
+      ctx.data = normalizeOneClawPlan(ctx.data);
+      return { ok: true };
+    },
+
+    validateSchemaStep<OneClawExecuteInput, OneClawExecuteData>(
+      oneclawExecuteValidator
+    ),
 
     refineJsonStep<OneClawExecuteInput, OneClawExecuteData>({
       check: (ctx) => checkOneClawExecuteConstraints(ctx.data as any),
       extraInstruction:
-        "Return valid JSON only. When shouldExecute=false, oneclawTask must be null. When shouldExecute=true, oneclawTask must contain taskName and at least one valid step."
+        "Return valid JSON only. If shouldExecute=false, oneclawTask must be null. If shouldExecute=true, oneclawTask must contain a valid taskName and at least one valid step. Only use these actions: api.request, browser.open, browser.screenshot, file.read, file.write, message.send, social.post.",
     }),
 
     parseJsonStep<OneClawExecuteInput, OneClawExecuteData>(),
-    validateSchemaStep<OneClawExecuteInput, OneClawExecuteData>(oneclawExecuteValidator),
 
     async (ctx: OneClawExecuteCtx) => {
-      const result = checkOneClawExecuteConstraints(ctx.data as any);
-      if (!result.ok) {
-        return { ok: false, error: result.errors };
-      }
+      ctx.data = normalizeOneClawPlan(ctx.data);
       return { ok: true };
     },
 
-    executeOneClawStep<OneClawExecuteInput, OneClawExecuteData>(),
+    validateSchemaStep<OneClawExecuteInput, OneClawExecuteData>(
+      oneclawExecuteValidator
+    ),
 
     async (ctx: OneClawExecuteCtx) => {
+      const result = checkOneClawExecuteConstraints(ctx.data as any);
+
+      if (!result.ok) {
+        return { ok: false, error: result.errors };
+      }
+
       if (!ctx.data) {
         return { ok: false, error: ["internal: data undefined"] };
       }
 
-      if (ctx.data.shouldExecute && ctx.meta?.oneclawResult) {
-        (ctx.data as any).execution = ctx.meta.oneclawResult;
-      }
-
+      // 纯 planning：这里绝不执行 OneClaw
+      // 最终只返回规划结果给 Bot / service 层
       return { ok: true };
-    }
-  ]
+    },
+  ],
 };
 
 registerWorkflow({
   task: "oneclaw_execute",
-  def: oneclawExecuteWorkflowDef as any
+  def: oneclawExecuteWorkflowDef as any,
 });
