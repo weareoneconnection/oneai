@@ -217,6 +217,15 @@ export default function HomePage() {
                 </Link>
               </div>
 
+              <div className="mt-4">
+                <Link
+                  href="/whitepaper"
+                  className="inline-flex items-center text-sm font-semibold text-black/70 hover:text-black transition"
+                >
+                  Read Whitepaper →
+                </Link>
+              </div>
+
               <div className="mt-5 text-sm text-black/50 max-w-2xl">
                 Built for structure → validation → export → workflow.
               </div>
@@ -658,6 +667,9 @@ export default function HomePage() {
               </Link>
               <Link className="hover:text-black" href="/developers">
                 Developers
+              </Link>
+              <Link className="hover:text-black" href="/whitepaper">
+                Whitepaper
               </Link>
             </div>
           </div>
