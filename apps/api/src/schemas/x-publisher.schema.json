@@ -1,0 +1,67 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reply", "shouldExecute", "posture", "oneclawTask"],
+  "properties": {
+    "reply": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 3000
+    },
+    "shouldExecute": {
+      "type": "boolean"
+    },
+    "posture": {
+      "type": "string",
+      "enum": ["launch", "growth", "proof", "quiet"]
+    },
+    "oneclawTask": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["taskName", "steps"],
+          "properties": {
+            "taskName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "steps": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 10,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "action", "input"],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": ["social.post"]
+                  },
+                  "input": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "dependsOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
