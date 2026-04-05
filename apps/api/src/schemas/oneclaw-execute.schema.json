@@ -1,5 +1,5 @@
 {
-  "$id": "oneclawExecuteV4",
+  "$id": "oneclawExecuteV4_1",
   "type": "object",
   "additionalProperties": false,
   "required": ["reply", "shouldExecute", "oneclawTask"],
@@ -14,9 +14,7 @@
     },
     "oneclawTask": {
       "anyOf": [
-        {
-          "type": "null"
-        },
+        { "type": "null" },
         {
           "type": "object",
           "additionalProperties": false,
@@ -51,6 +49,7 @@
                   },
                   "dependsOn": {
                     "type": "array",
+                    "default": [],
                     "items": {
                       "type": "string",
                       "pattern": "^[a-zA-Z0-9_-]{2,80}$"
@@ -69,9 +68,7 @@
     {
       "if": {
         "properties": {
-          "shouldExecute": {
-            "const": true
-          }
+          "shouldExecute": { "const": true }
         },
         "required": ["shouldExecute"]
       },
@@ -111,6 +108,7 @@
                     },
                     "dependsOn": {
                       "type": "array",
+                      "default": [],
                       "items": {
                         "type": "string",
                         "pattern": "^[a-zA-Z0-9_-]{2,80}$"
@@ -126,9 +124,7 @@
       },
       "else": {
         "properties": {
-          "oneclawTask": {
-            "type": "null"
-          }
+          "oneclawTask": { "type": "null" }
         }
       }
     }
