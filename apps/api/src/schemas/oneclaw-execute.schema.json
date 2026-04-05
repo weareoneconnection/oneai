@@ -69,7 +69,9 @@
     {
       "if": {
         "properties": {
-          "shouldExecute": { "const": true }
+          "shouldExecute": {
+            "const": true
+          }
         },
         "required": ["shouldExecute"]
       },
