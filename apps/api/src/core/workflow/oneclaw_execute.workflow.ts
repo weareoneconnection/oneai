@@ -195,7 +195,7 @@ export const oneclawExecuteWorkflowDef: WorkflowDefinition<OneClawExecuteCtx> = 
   steps: [
     preparePromptStep<OneClawExecuteInput, OneClawExecuteData>({
       task: "oneclaw_execute",
-      templateVersion: 4,
+      templateVersion: 1,
       variables: (input) => ({
         message: input.message,
         lang: input.lang ?? "mixed",
