@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "required": [
+    "summary",
+    "tweets",
+    "missions",
+    "actions",
+    "proofLabel",
+    "aiReasoning",
+    "rawText"
+  ],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tweets": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "missions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "actions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "proofLabel": {
+      "type": "string",
+      "minLength": 1
+    },
+    "aiReasoning": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 3,
+      "maxItems": 6
+    },
+    "rawText": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": false
+}
