@@ -14,7 +14,6 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function isNumericTweetId(value: string): boolean {
   return /^[0-9]{1,19}$/.test(value);
 }
-
 export function checkXPublisherConstraints(data: unknown): ConstraintResult {
   const errors: string[] = [];
 
@@ -72,8 +71,9 @@ export function checkXPublisherConstraints(data: unknown): ConstraintResult {
     };
   }
 
-  if (steps.length > 5) {
-    errors.push("xPublisher should not generate more than 5 steps");
+  // 🔥 限制：最多2个 step（更干净）
+  if (steps.length > 2) {
+    errors.push("xPublisher should not generate more than 2 steps");
   }
 
   let mainPostCount = 0;
@@ -110,18 +110,54 @@ export function checkXPublisherConstraints(data: unknown): ConstraintResult {
 
     if (!content) {
       errors.push(`step[${i}].input.content is required`);
+      continue;
+    }
+
+    // 🔥🔥🔥 关键升级：内容质量过滤
+    const lowered = content.toLowerCase();
+
+    if (content.length < 20) {
+      errors.push(`step[${i}] content too short (low value)`);
+    }
+
+    if (content.length > 280) {
+      errors.push(`step[${i}] content exceeds X limit`);
+    }
+
+    // 🚫 AI废话过滤
+    if (
+      lowered.includes("the future is here") ||
+      lowered.includes("ai is changing everything") ||
+      lowered.includes("exciting times ahead") ||
+      lowered.includes("we are building the future")
+    ) {
+      errors.push(`step[${i}] content is generic/low-signal`);
+    }
+
+    // 🚫 太泛
+    if (
+      lowered.includes("everything") &&
+      lowered.includes("ai")
+    ) {
+      errors.push(`step[${i}] content too vague`);
+    }
+
+    // 🚫 过多emoji
+    const emojiCount = (content.match(/[\u{1F300}-\u{1FAFF}]/gu) || []).length;
+    if (emojiCount > 2) {
+      errors.push(`step[${i}] too many emojis`);
     }
 
     if (replyToTweetId) {
       if (!isNumericTweetId(replyToTweetId)) {
         errors.push(
-          `step[${i}].input.replyToTweetId must be a numeric tweet id`,
+          `step[${i}].input.replyToTweetId must be numeric`
         );
       }
 
       if (dependsOn.length === 0) {
         errors.push(
-          `step[${i}] reply step should include dependsOn for sequencing`,
+          `step[${i}] reply step should include dependsOn`
         );
       }
     } else {
@@ -132,14 +168,15 @@ export function checkXPublisherConstraints(data: unknown): ConstraintResult {
       for (let j = 0; j < mediaPaths.length; j += 1) {
         const mediaPath = asString(mediaPaths[j]);
         if (!mediaPath) {
-          errors.push(`step[${i}].input.mediaPaths[${j}] must be non-empty`);
+          errors.push(`step[${i}].input.mediaPaths[${j}] invalid`);
         }
       }
     }
   }
 
-  if (mainPostCount > 3) {
-    errors.push("xPublisher should not generate more than 3 non-reply posts");
+  // 🔥 只允许1个主帖（关键）
+  if (mainPostCount > 1) {
+    errors.push("only 1 main post allowed");
   }
 
   return {

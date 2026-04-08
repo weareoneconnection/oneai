@@ -19,7 +19,14 @@ export type XEngageInput = {
   candidateTweets?: Array<{
     tweetId: string;
     author?: string;
+    authorId?: string;
     text: string;
+    createdAt?: string;
+    conversationId?: string;
+    referencedTweets?: Array<{
+      type?: string;
+      id?: string;
+    }>;
   }>;
 };
 
@@ -125,9 +132,10 @@ export const xEngageWorkflowDef: WorkflowDefinition<XEngageCtx> = {
     validateSchemaStep<XEngageInput, XEngageData>(xEngageValidator),
 
     refineJsonStep<XEngageInput, XEngageData>({
-      check: (ctx) => checkXEngageConstraints(ctx.data as any),
+      check: (ctx) =>
+        checkXEngageConstraints(ctx.data as any, ctx.input.candidateTweets ?? []),
       extraInstruction:
-        "Return valid JSON only. If shouldExecute=false, oneclawTask must be null. If shouldExecute=true, oneclawTask must contain at least one valid social.post reply step. Each step must include input.content and numeric input.replyToTweetId. Prefer at most 2 reply steps.",
+        "Return valid JSON only. If shouldExecute=false, oneclawTask must be null. If shouldExecute=true, oneclawTask must contain at least one valid social.post reply step. Each step must include input.content and numeric input.replyToTweetId. Only select tweets that are highly likely to allow public replies. Prefer root tweets with open discussion signals such as questions, requests for thoughts, builders prompts, or clear invitation to comment. Avoid announcement-style, closed, gated, quoted, or likely restricted conversations. Prefer at most 2 reply steps.",
     }),
 
     parseJsonStep<XEngageInput, XEngageData>(),
@@ -140,7 +148,10 @@ export const xEngageWorkflowDef: WorkflowDefinition<XEngageCtx> = {
     validateSchemaStep<XEngageInput, XEngageData>(xEngageValidator),
 
     async (ctx: XEngageCtx) => {
-      const result = checkXEngageConstraints(ctx.data as any);
+      const result = checkXEngageConstraints(
+        ctx.data as any,
+        ctx.input.candidateTweets ?? [],
+      );
 
       if (!result.ok) {
         return { ok: false, error: result.errors };
