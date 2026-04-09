@@ -17,25 +17,51 @@ export type MissionOsInput = {
   brand?: string;
   link?: string;
   lang?: "en" | "zh";
+
+  missionType?: "growth" | "community" | "content" | "builder" | "referral";
+  difficulty?: "easy" | "medium" | "hard";
 };
 
-export type MissionOsData = any; // 为了避免过度 TS 嵌套错误
+type Ctx = WorkflowContext<MissionOsInput, any>;
 
-type Ctx = WorkflowContext<MissionOsInput, MissionOsData> & {
-  templateVersion: number;
-};
-
-function checkMissionOsConstraints(data: any, link?: string): { ok: boolean; errors: string[] } {
+function checkMissionOsConstraints(data: any, link?: string) {
   const errors: string[] = [];
 
-  if (!(data?.mission_title ?? "").trim()) errors.push("mission_title required");
-  if (!(data?.objective ?? "").trim()) errors.push("objective required");
-  if (!Array.isArray(data?.steps) || data.steps.length < 3) errors.push("steps must be 3-10");
+  if (!data?.mission_title) errors.push("mission_title required");
+  if (!data?.objective) errors.push("objective required");
+  if (!data?.first_action) errors.push("first_action required");
 
-  if (!data?.proof?.proofType) errors.push("proof.proofType required");
-  if (!data?.reward_structure?.scoring?.length) errors.push("reward_structure.scoring required");
-  if (!data?.reward_structure?.budgetCap) errors.push("reward_structure.budgetCap required");
+  if (!Array.isArray(data?.steps) || data.steps.length < 3) {
+    errors.push("steps must be 3-10");
+  }
 
+  if (!data?.execution?.platforms?.length) {
+    errors.push("execution.platforms required");
+  }
+
+  if (!data?.review_policy?.reviewMode) {
+    errors.push("review_policy required");
+  }
+
+  if (!data?.reward_structure?.budgetCap) {
+    errors.push("budgetCap required");
+  }
+
+  // ===== 💰 Economic guard（严格版）=====
+  const reward = data.reward_structure;
+  const cap = reward.budgetCap;
+
+  const participation = parseFloat(
+    (reward.participation_reward ?? "0").replace(/[^\d.]/g, "")
+  );
+
+  const total = participation * cap.maxParticipants;
+
+  if (!isNaN(total) && total > cap.maxTotalReward) {
+    errors.push("budget overflow: participation_reward * maxParticipants exceeds maxTotalReward");
+  }
+
+  // ===== 🐦 tweet 检查 =====
   const tweet = data?.recommendedCopy;
   if (tweet) {
     const r = checkTweetConstraints(tweet, link);
@@ -51,80 +77,46 @@ export const missionOsWorkflowDef: WorkflowDefinition<Ctx> = {
   name: "mission_os_workflow",
   maxAttempts: 3,
   steps: [
-    preparePromptStep<MissionOsInput, MissionOsData>({
+    preparePromptStep({
       task: "mission_os",
-      templateVersion: 1,
+      templateVersion: 2,
       variables: (input) => ({
         goal: input.goal,
         targetAudience: input.targetAudience,
         brand: input.brand ?? "WAOC",
         link: input.link ?? "",
-        lang: input.lang ?? "en"
+        lang: input.lang ?? "en",
+        missionType: input.missionType ?? "growth",
+        difficulty: input.difficulty ?? "easy"
       })
     }),
 
-    generateLLMStep<MissionOsInput, MissionOsData>(),
-    parseJsonStep<MissionOsInput, MissionOsData>(),
-    validateSchemaStep<MissionOsInput, MissionOsData>(missionOsValidator),
+    generateLLMStep(),
+    parseJsonStep(),
+    validateSchemaStep(missionOsValidator),
 
-    refineJsonStep<MissionOsInput, MissionOsData>({
-      check: (ctx) => checkMissionOsConstraints(ctx.data as any, ctx.input.link),
+    refineJsonStep({
+      check: (ctx) => checkMissionOsConstraints(ctx.data, ctx.input.link),
       extraInstruction:
-        "Return ONLY valid JSON with all required fields. Ensure economic logic is consistent."
+        "Fix all validation errors. Ensure economics is realistic. Return ONLY JSON."
     }),
 
-    parseJsonStep<MissionOsInput, MissionOsData>(),
-    validateSchemaStep<MissionOsInput, MissionOsData>(missionOsValidator),
+    parseJsonStep(),
+    validateSchemaStep(missionOsValidator),
 
-    /* =========================
-       Final Guard Step
-    ========================== */
+    // ===== 🔗 CTA 修复 =====
+    async (ctx) => {
+      const link = (ctx.input.link ?? "").trim();
+      const copy = ctx.data.recommendedCopy;
 
-    async (ctx: Ctx) => {
-      const r = checkMissionOsConstraints(ctx.data as any, ctx.input.link);
-      if (!r.ok) return { ok: false, error: r.errors };
+      const normalize = (s: string) => {
+        const stripped = (s ?? "").replace(/https?:\/\/\S+/g, "").trim();
+        return link ? `${stripped} ${link}`.trim() : stripped;
+      };
 
-      // ✅ TS 安全保护
-      if (!ctx.data) {
-        return { ok: false, error: ["internal: data undefined"] };
-      }
-
-      const reward = ctx.data.reward_structure;
-      const cap = reward.budgetCap;
-
-      // ===== 🧮 Economic Guard =====
-      const participationReward = parseFloat(
-        (reward.participation_reward ?? "0").replace(/[^\d.]/g, "")
-      );
-
-      const maxParticipants = cap.maxParticipants ?? 0;
-
-      const estimatedTotal = participationReward * maxParticipants;
-
-      if (!isNaN(estimatedTotal) && estimatedTotal > cap.maxTotalReward) {
-        cap.maxTotalReward = estimatedTotal;
-      }
-      // =============================
-
-      // ===== 🔗 推荐文案链接修正 =====
-      if (ctx.data.recommendedCopy) {
-        const link = (ctx.input.link ?? "").trim();
-        const copy = ctx.data.recommendedCopy;
-
-        if (link) {
-          const cleaned = (copy.cta ?? "").replace(/https?:\/\/\S+/g, "").trim();
-          copy.cta = (cleaned ? cleaned + " " : "") + link;
-
-          copy.tweet_en = (copy.tweet_en ?? "").replace(/https?:\/\/\S+/g, link);
-          copy.tweet_zh = (copy.tweet_zh ?? "").replace(/https?:\/\/\S+/g, link);
-        } else {
-          const strip = (s: string) => (s ?? "").replace(/https?:\/\/\S+/g, "").trim();
-          copy.cta = strip(copy.cta) || "Join the WAOC community.";
-          copy.tweet_en = strip(copy.tweet_en);
-          copy.tweet_zh = strip(copy.tweet_zh);
-        }
-      }
-      // =============================
+      copy.tweet_en = normalize(copy.tweet_en);
+      copy.tweet_zh = normalize(copy.tweet_zh);
+      copy.cta = normalize(copy.cta || "Join WAOC.");
 
       return { ok: true };
     }
