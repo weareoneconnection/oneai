@@ -1,7 +1,14 @@
 {
   "$id": "oneMirrorOutput",
   "type": "object",
-  "required": ["worldType", "summary", "shockLine", "consequences", "scores"],
+  "required": [
+    "worldType",
+    "summary",
+    "shockLine",
+    "consequences",
+    "scores",
+    "socialPost"
+  ],
   "properties": {
     "worldType": {
       "type": "string",
@@ -16,30 +23,26 @@
         "resilient-open-world"
       ]
     },
-
     "summary": {
       "type": "string",
-      "minLength": 20,
-      "maxLength": 320
+      "minLength": 10,
+      "maxLength": 200
     },
-
     "shockLine": {
       "type": "string",
-      "minLength": 12,
-      "maxLength": 180
+      "minLength": 8,
+      "maxLength": 80
     },
-
     "consequences": {
       "type": "array",
       "minItems": 3,
       "maxItems": 3,
       "items": {
         "type": "string",
-        "minLength": 12,
+        "minLength": 8,
         "maxLength": 120
       }
     },
-
     "scores": {
       "type": "object",
       "required": [
@@ -61,6 +64,28 @@
         "openness": { "type": "number", "minimum": 0, "maximum": 100 },
         "extraction": { "type": "number", "minimum": 0, "maximum": 100 },
         "longTermism": { "type": "number", "minimum": 0, "maximum": 100 }
+      },
+      "additionalProperties": false
+    },
+    "socialPost": {
+      "type": "object",
+      "required": ["hook", "body", "cta"],
+      "properties": {
+        "hook": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "body": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 500
+        },
+        "cta": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 80
+        }
       },
       "additionalProperties": false
     }
