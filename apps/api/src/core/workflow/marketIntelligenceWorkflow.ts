@@ -40,7 +40,7 @@ export const marketIntelligenceWorkflowDef: WorkflowDefinition<Ctx> = {
   steps: [
     preparePromptStep({
       task: "market_intelligence",
-      templateVersion: 2,
+      templateVersion: 1,
       variables: (input) => ({
         market: JSON.stringify(input.market ?? {}),
         benchmarks: JSON.stringify(input.benchmarks ?? {}),
