@@ -5,12 +5,14 @@ import type { WorkflowDefinition } from "./engine.js";
 
 import { preparePromptStep } from "./steps/preparePromptStep.js";
 import { generateLLMStep } from "./steps/generateLLMStep.js";
+import { validateSchemaStep } from "./steps/validateSchemaStep.js";
 import { refineJsonStep } from "./steps/refineJsonStep.js";
+import { parseJsonStep } from "./steps/parseJsonStep.js";
 
 import { waocChatValidator } from "../validators/waocChatValidator.js";
 import { checkWaocChatConstraintsSafe } from "../constraints/waocChatConstraints.js";
 
-const WAOC_CHAT_TEMPLATE_VERSION = 5;
+const WAOC_CHAT_TEMPLATE_VERSION = 6;
 
 export type WaocSuggestedAction =
   | "none"
@@ -69,7 +71,6 @@ export type WaocChatInput = {
   recentMessages?: string;
   memory?: string;
   threadMemory?: ThreadMemory | string | null;
-
   communityName?: string;
   communityIdentity?: string;
   communityNarrative?: string;
@@ -84,7 +85,6 @@ type WaocChatCtx = WorkflowContext<WaocChatInput, WaocChatData> & {
   __community?: CommunityContext;
   __signals?: CommunitySignals;
   __route?: RouteDecision;
-  __rawOutput?: string;
 };
 
 type CommunityContext = {
@@ -137,7 +137,6 @@ type AiRouterIntent =
   | "price"
   | "x"
   | "web"
-  | "browse"
   | "capability"
   | "community"
   | "system"
@@ -191,10 +190,10 @@ function finalizeReply(reply: string, lang: "en" | "zh" | "mixed") {
     .split("\n")
     .map((x) => x.trim())
     .filter(Boolean)
-    .slice(0, 24);
+    .slice(0, 12);
 
   if (lines.length) return lines.join("\n");
-  return lang === "zh" ? "我在。" : "I’m here.";
+  return lang === "zh" ? "刚刚那条没处理好。" : "That one didn’t go through cleanly.";
 }
 
 function inferCommunityContext(input: WaocChatInput): CommunityContext {
@@ -306,8 +305,7 @@ function looksLikeXIntent(msg: string) {
 
 function looksLikeWebIntent(msg: string) {
   return (
-    /\bhttps?:\/\/\S+/i.test(msg) ||
-    /\bwww\.\S+/i.test(msg) ||
+    /\bhttps?:\/\//.test(msg) ||
     /\bwebsite\b|\bweb page\b|\barticle\b|\blink\b/.test(msg) ||
     /网页|文章|网址|网站|链接/.test(msg)
   );
@@ -322,19 +320,13 @@ function looksLikeBrowseIntent(raw: string) {
     /\bwww\.\S+/i.test(text);
 
   const explicitBrowseIntent =
-    /浏览网页|打开网页|访问网页|看看这个网页|看看这个网站|分析这个网页|分析这个链接|读取网页|抓取网页|看一下这个网页|看一下这个网站|打开这个页面|分析这个页面/.test(text) ||
+    /浏览网页|打开网页|访问网页|看看这个网页|看看这个网站|分析这个网页|分析这个链接|读取网页|抓取网页|看一下这个网站|看一下这个网页|打开这个页面|分析这个页面/.test(text) ||
     /open (this )?(page|site|website|link)/i.test(text) ||
     /browse (this )?(page|site|website|link)/i.test(text) ||
     /analyze (this )?(page|site|website|link)/i.test(text) ||
-    /read (this )?(page|site|website|link)/i.test(text) ||
-    /check (this )?(page|site|website|link)/i.test(text);
+    /read (this )?(page|site|website|link)/i.test(text);
 
-  const likelyPassiveBrowse =
-    hasUrl &&
-    !looksLikeXIntent(msg) &&
-    !looksLikePriceIntent(msg);
-
-  return explicitBrowseIntent || likelyPassiveBrowse;
+  return explicitBrowseIntent || hasUrl;
 }
 
 function looksLikeCapabilityQuestion(msg: string) {
@@ -396,11 +388,11 @@ function inferRouteDecision(args: {
 
   if (signals.browseSignal) {
     return {
-      intent: "browse",
+      intent: "web",
       confidence: 0.99,
       task: "oneclaw_execute",
       suggestedAction: "/web",
-      reason: "oneclaw_browse_route",
+      reason: "oneclaw_execute_route",
     };
   }
 
@@ -432,7 +424,7 @@ function inferRouteDecision(args: {
     return { intent: "x", confidence: 0.95, task: "x_agent", suggestedAction: "/x", reason: "x_agent_route" };
   }
   if (signals.webSignal) {
-    return { intent: "web", confidence: 0.90, suggestedAction: "/web", reason: "web_match" };
+    return { intent: "web", confidence: 0.95, task: "web_agent", suggestedAction: "/web", reason: "web_agent_route" };
   }
   if (signals.reportSignal) {
     return { intent: "report", confidence: 0.92, task: "report_agent", suggestedAction: "/report", reason: "report_match" };
@@ -473,8 +465,8 @@ function quickAutoReply(args: {
     return {
       reply:
         lang === "zh"
-          ? "WAOC = We Are One Connection。它更像一个围绕协作、贡献、builder、mission 和长期生态增长展开的网络。"
-          : "WAOC = We Are One Connection. It is a network centered on coordination, contribution, builders, missions, and long-term ecosystem growth.",
+          ? "WAOC = We Are One Connection。\n它更像一个围绕协作、贡献、builder、mission 和长期生态增长展开的网络。"
+          : "WAOC = We Are One Connection.\nIt is a network centered on coordination, contribution, builders, missions, and long-term ecosystem growth.",
       suggestedAction: "none",
     };
   }
@@ -483,8 +475,8 @@ function quickAutoReply(args: {
     return {
       reply:
         lang === "zh"
-          ? "你可以直接问我项目是什么、怎么开始、有哪些链接、builder / mission / rank / report，也可以发网页、链接或网站，我会自动尝试调用执行能力去看。"
-          : "You can ask what the project is, how to start, official links, builder/mission/rank/report, or just drop a page/link/site and I’ll try to use execution capabilities to inspect it.",
+          ? "你可以直接问我：项目是什么、怎么开始、有哪些链接、builder / mission / rank / report，也可以问新闻、价格、X、网页。"
+          : "You can ask what the project is, how to start, official links, builder/mission/rank/report, or ask about news, price, X, and web content.",
       suggestedAction: "/help",
     };
   }
@@ -548,7 +540,7 @@ function safeParse(output: string): any {
     }
 
     return {
-      reply: raw.trim().slice(0, 4000) || "I’m here.",
+      reply: raw.trim().slice(0, 500) || "That one didn’t go through cleanly.",
       suggestedAction: "none",
     };
   }
@@ -558,9 +550,15 @@ function normalizeWaocChatData(value: any): WaocChatData {
   const reply =
     typeof value?.reply === "string" && value.reply.trim()
       ? value.reply.trim()
-      : typeof value === "string" && value.trim()
-        ? value.trim()
-        : "I’m here.";
+      : typeof value?.text === "string" && value.text.trim()
+        ? value.text.trim()
+        : typeof value?.answer === "string" && value.answer.trim()
+          ? value.answer.trim()
+          : typeof value?.content === "string" && value.content.trim()
+            ? value.content.trim()
+            : typeof value === "string" && value.trim()
+              ? value.trim()
+              : "That one didn’t go through cleanly.";
 
   const suggestedAction = ensureAllowedAction(
     typeof value?.suggestedAction === "string" ? value.suggestedAction : "none"
@@ -602,7 +600,7 @@ function buildThreadMemory(args: {
     next.topic = next.topic || "market / price";
   } else if (route.intent === "x") {
     next.topic = next.topic || "x / twitter analysis";
-  } else if (route.intent === "web" || route.intent === "browse") {
+  } else if (route.intent === "web") {
     next.topic = next.topic || "web content analysis";
   }
 
@@ -616,11 +614,6 @@ function buildThreadMemory(args: {
 
   if (/next step|下一步|怎么执行|落地|owner|谁来做|who should own/.test(lower(raw))) {
     next.mood = "deciding";
-    next.nextStep = raw;
-  } else if (signals.directQuestionSignal) {
-    next.mood = "deciding";
-  } else {
-    next.mood = next.mood || "open";
   }
 
   if (!next.topic && recentTail) {
@@ -648,7 +641,6 @@ function updateThreadMemoryFromReply(args: {
 
   if (
     route.intent === "mission" ||
-    route.intent === "browse" ||
     /next step|owner|deliverable|任务|执行|落地/.test(msg)
   ) {
     next.mood = "executing";
@@ -713,7 +705,7 @@ async function readThreadMemory(args: {
 }
 
 function safeParseStep<I, O>() {
-  return async (ctx: WorkflowContext<I, O> & { output?: unknown; rawOutput?: unknown; data?: any; result?: unknown }) => {
+  return async (ctx: WorkflowContext<I, O> & { output?: unknown; rawOutput?: unknown; data?: any }) => {
     const rawOutput =
       (ctx as any)?.output ??
       (ctx as any)?.rawOutput ??
@@ -721,13 +713,14 @@ function safeParseStep<I, O>() {
       (ctx as any)?.result ??
       "";
 
-    (ctx as any).__rawOutput = String(rawOutput ?? "");
-    (ctx as any).data = normalizeWaocChatData(safeParse(String(rawOutput ?? "")));
+    const parsed = safeParse(String(rawOutput ?? ""));
+    (ctx as any).data = normalizeWaocChatData(parsed);
+
     return { ok: true };
   };
 }
 
-function softValidateStep<I, O>() {
+function safeValidateStep<I, O>() {
   return async (ctx: WorkflowContext<I, O> & { data?: any }) => {
     try {
       const maybe =
@@ -746,23 +739,7 @@ function softValidateStep<I, O>() {
     } catch {
       ctx.data = normalizeWaocChatData(ctx.data);
     }
-    return { ok: true };
-  };
-}
 
-function safeRefineStep<I, O>() {
-  return async (ctx: WorkflowContext<I, O> & { data?: any; input?: any }) => {
-    try {
-      const normalized = normalizeWaocChatData(ctx.data);
-      const checked = checkWaocChatConstraintsSafe({
-        data: normalized,
-        userMessage: ctx.input?.message,
-        lang: toConstraintLang(ctx.input?.lang),
-      });
-      ctx.data = normalizeWaocChatData(checked.data);
-    } catch {
-      ctx.data = normalizeWaocChatData(ctx.data);
-    }
     return { ok: true };
   };
 }
@@ -803,7 +780,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
       return { ok: true };
     },
 
-    // step 2: build lightweight thread memory + signals + route
+    // step 2: build lightweight thread memory
     async (ctx: WaocChatCtx) => {
       const raw = norm(ctx.input?.message);
       const previous =
@@ -868,39 +845,35 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
     // step 4-8: llm chain
     generateLLMStep<WaocChatInput, WaocChatData>(),
     safeParseStep<WaocChatInput, WaocChatData>(),
-    softValidateStep<WaocChatInput, WaocChatData>(),
+    safeValidateStep<WaocChatInput, WaocChatData>(),
 
     refineJsonStep<WaocChatInput, WaocChatData>({
       check: (ctx) => {
-        try {
-          const normalized = normalizeWaocChatData(ctx.data);
-          const checked = checkWaocChatConstraintsSafe({
-            data: normalized,
-            userMessage: ctx.input?.message,
-            lang: toConstraintLang(ctx.input?.lang),
-          });
-          ctx.data = normalizeWaocChatData(checked.data);
-          return { ok: true, errors: [] };
-        } catch {
-          ctx.data = normalizeWaocChatData(ctx.data);
-          return { ok: true, errors: [] };
-        }
+        const normalized = normalizeWaocChatData(ctx.data);
+        const checked = checkWaocChatConstraintsSafe({
+          data: normalized,
+          userMessage: ctx.input?.message,
+          lang: toConstraintLang(ctx.input?.lang),
+        });
+
+        ctx.data = normalizeWaocChatData(checked.data);
+        return { ok: true, errors: [] };
       },
       extraInstruction:
-        "Reply naturally like a highly capable community operator.\n" +
-        "Prefer a concise answer by default.\n" +
-        "If the user asks for deep analysis, you can go long.\n" +
-        "If possible, provide JSON with keys reply and suggestedAction.\n" +
-        "If not, a natural reply is acceptable.\n" +
-        "Use context, recent messages, and thread memory to resolve ambiguity.\n" +
-        "When a link or webpage is involved, do not over-explain if execution can inspect it.\n",
+        'Return ONLY valid JSON: {"reply":"...","suggestedAction":"..."}.\n' +
+        '- suggestedAction MUST be one of: "none", "/links", "/help", "/mission", "/rank", "/report", "/builders", "/knowledge", "/growth", "/news", "/events", "/tools", "/price", "/x", "/web".\n' +
+        "- reply is required and must directly answer the current message.\n" +
+        "- Keep reply concise and natural.\n" +
+        "- Use threadMemory to avoid repeating already-set conclusions.\n" +
+        "- Do not auto-ask generic follow-up questions unless truly necessary.\n" +
+        "- Do not fabricate price/news/X/web facts.\n" +
+        "- In WAOC scope, WAOC MUST mean only 'We Are One Connection'.\n",
     }),
 
     safeParseStep<WaocChatInput, WaocChatData>(),
-    softValidateStep<WaocChatInput, WaocChatData>(),
-    safeRefineStep<WaocChatInput, WaocChatData>(),
+    safeValidateStep<WaocChatInput, WaocChatData>(),
 
-    // step 9: agent / tool routing
+    // step 9: agent routing
     async (ctx: WaocChatCtx) => {
       if (!ctx.data) {
         ctx.data = { reply: "", suggestedAction: "none" };
@@ -928,14 +901,6 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
 
       if (route.task) {
         try {
-          const defaultChatId =
-            String(
-              (ctx as any)?.meta?.chatId ??
-              (ctx as any)?.chatId ??
-              (ctx as any)?.input?.chatId ??
-              ""
-            ).trim();
-
           const taskInput: any = {
             message: raw,
             lang,
@@ -948,10 +913,6 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
             communityFocus: community.communityFocus,
             ecosystemContext: community.ecosystemContext,
             officialLinks: community.officialLinks,
-
-            // oneclaw compatibility
-            defaultChatId,
-            defaultScreenshotPath: "oneclaw_auto.png",
           };
 
           const r = await runTask(route.task, taskInput, {
@@ -959,17 +920,13 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
           });
 
           if (r?.success) {
-            let answer = norm(
+            const answer = norm(
               r.data?.reply ??
                 r.data?.answer ??
                 r.data?.content ??
                 r.data?.text ??
                 ""
             );
-
-            if (!answer && r?.data) {
-              answer = norm(JSON.stringify(r.data));
-            }
 
             if (answer) {
               ctx.data.reply = answer;
@@ -991,18 +948,13 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
         ctx.data.suggestedAction = route.suggestedAction;
       }
 
-      try {
-        const checked = checkWaocChatConstraintsSafe({
-          data: normalizeWaocChatData(ctx.data),
-          userMessage: ctx.input.message,
-          lang: toConstraintLang(ctx.input.lang),
-        });
+      const checked = checkWaocChatConstraintsSafe({
+        data: normalizeWaocChatData(ctx.data),
+        userMessage: ctx.input.message,
+        lang: toConstraintLang(ctx.input.lang),
+      });
 
-        ctx.data = normalizeWaocChatData(checked.data);
-      } catch {
-        ctx.data = normalizeWaocChatData(ctx.data);
-      }
-
+      ctx.data = normalizeWaocChatData(checked.data);
       ctx.data.reply = finalizeReply(ctx.data.reply, lang);
       ctx.data.suggestedAction = ensureAllowedAction(
         ctx.data.suggestedAction ?? "none"
@@ -1028,6 +980,7 @@ export const waocChatWorkflowDef: WorkflowDefinition<WaocChatCtx> = {
 
       ctx.__threadMemory = updated;
       await persistThreadMemory({ ctx, memory: updated });
+
       return { ok: true };
     },
   ],
