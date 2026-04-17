@@ -1,11 +1,78 @@
 {
   "$id": "waocChatInput",
   "type": "object",
+  "additionalProperties": true,
   "required": ["message"],
   "properties": {
     "message": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "context": {
+      "type": "string",
+      "enum": ["community", "mission", "philosophy", "general"],
+      "default": "general"
+    },
+    "lang": {
+      "type": "string",
+      "enum": ["en", "zh", "mixed"],
+      "default": "en"
+    },
+    "recentMessages": {
+      "type": "string",
+      "maxLength": 30000,
+      "default": ""
+    },
+    "memory": {
+      "type": "string",
+      "maxLength": 30000,
+      "default": ""
+    },
+    "threadMemory": {
+      "anyOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "string",
+          "maxLength": 30000
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "communityName": {
+      "type": "string",
+      "maxLength": 200,
+      "default": ""
+    },
+    "communityIdentity": {
+      "type": "string",
+      "maxLength": 2000,
+      "default": ""
+    },
+    "communityNarrative": {
+      "type": "string",
+      "maxLength": 4000,
+      "default": ""
+    },
+    "communityFocus": {
+      "type": "string",
+      "maxLength": 2000,
+      "default": ""
+    },
+    "ecosystemContext": {
+      "type": "string",
+      "maxLength": 4000,
+      "default": ""
+    },
+    "officialLinks": {
+      "type": "string",
+      "maxLength": 4000,
+      "default": ""
     }
-  },
-  "additionalProperties": true
+  }
 }
