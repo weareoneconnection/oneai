@@ -41,8 +41,9 @@ import "./onefield_intelligence_workflow.js";
 
 import "./oneMirrorWorkflow.js";
 
-
-
+import "./marketIntelligenceWorkflow.js";
+import "./marketAnalysisWorkflow.js";
+import "./marketDecisionWorkflow.js";
 
 
 
