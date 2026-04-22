@@ -16,8 +16,11 @@ export function refineJsonStep<TInput, TData>(
     if (r.ok) return { ok: true };
 
     try {
-      const client = getOpenAIClient();
+      if (!ctx.model) {
+        throw new Error("ctx.model is missing");
+      }
 
+      const client = getOpenAIClient();
       const link = (ctx as any)?.input?.link ? String((ctx as any).input.link) : "";
 
       const repairPrompt = `
@@ -42,10 +45,18 @@ NON-NEGOTIABLE:
 ${config.extraInstruction ? `\nExtra:\n${config.extraInstruction}\n` : ""}
 `;
 
+      console.log("[refineJsonStep] request", {
+        model: ctx.model,
+        repairPromptLength: repairPrompt.length,
+      });
+
       const completion = await client.chat.completions.create({
-        model: ctx.model!,
+        model: ctx.model,
         messages: [
-          { role: "system", content: "You output strict JSON only. Constraints override all other instructions." },
+          {
+            role: "system",
+            content: "You output strict JSON only. Constraints override all other instructions."
+          },
           { role: "user", content: repairPrompt }
         ],
         temperature: 0.2
@@ -55,11 +66,31 @@ ${config.extraInstruction ? `\nExtra:\n${config.extraInstruction}\n` : ""}
       ctx.usage = u;
       addUsage(ctx, u);
 
-      ctx.rawText = completion.choices[0].message.content ?? "{}";
+      ctx.rawText = completion.choices[0]?.message?.content ?? "{}";
 
       return { ok: true };
-    } catch (e) {
-      return { ok: false, error: e };
+    } catch (e: any) {
+      console.error("[refineJsonStep][OpenAI RAW ERROR]", {
+        name: e?.name,
+        message: e?.message,
+        status: e?.status,
+        code: e?.code,
+        type: e?.type,
+        param: e?.param,
+        stack: e?.stack,
+      });
+
+      return {
+        ok: false,
+        error: {
+          name: e?.name ?? "Error",
+          message: e?.message ?? "Unknown error",
+          status: e?.status,
+          code: e?.code,
+          type: e?.type,
+          param: e?.param,
+        }
+      };
     }
   };
 }
