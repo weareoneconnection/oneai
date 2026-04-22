@@ -12,7 +12,7 @@ const router = Router();
 /**
  * 启动级检查
  * 没配 OPENAI_API_KEY 就直接报出来，避免线上静默失败
- */
+
 const hasOpenAIKey =
   typeof process.env.OPENAI_API_KEY === "string" &&
   process.env.OPENAI_API_KEY.trim().length > 0;
