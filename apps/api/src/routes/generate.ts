@@ -7,32 +7,186 @@ import { requireApiKey, type AuthedRequest } from "../core/security/auth.js";
 import { rateLimitRedisTcp } from "../core/security/rateLimitRedis.js";
 import { prisma } from "../config/prisma.js";
 
-
-
 const router = Router();
 
 /**
- * 1️⃣ 安全中间件
+ * 启动级检查
+ * 没配 OPENAI_API_KEY 就直接报出来，避免线上静默失败
+ */
+const hasOpenAIKey =
+  typeof process.env.OPENAI_API_KEY === "string" &&
+  process.env.OPENAI_API_KEY.trim().length > 0;
+
+if (!hasOpenAIKey) {
+  console.error("[OneAI][router] OPENAI_API_KEY is missing at startup");
+}
+
+/**
+ * 安全 stringify，避免循环引用导致 JSON.stringify 崩掉
+ */
+function safeJsonStringify(value: unknown): string {
+  try {
+    const seen = new WeakSet();
+
+    return JSON.stringify(value, (_key, val) => {
+      if (typeof val === "object" && val !== null) {
+        if (seen.has(val)) return "[Circular]";
+        seen.add(val);
+      }
+
+      if (val instanceof Error) {
+        return {
+          name: val.name,
+          message: val.message,
+          stack: val.stack
+        };
+      }
+
+      return val;
+    });
+  } catch {
+    return String(value);
+  }
+}
+
+function sha256(input: string): string {
+  return crypto.createHash("sha256").update(input).digest("hex");
+}
+
+function normalizeEstimatedCostUsd(result: any): number {
+  const raw =
+    result?.usage?.estimatedCostUsd ??
+    result?.usage?.estimatedCostUSD ??
+    result?.usageTotal?.estimatedCostUsd ??
+    result?.usageTotal?.estimatedCostUSD ??
+    0;
+
+  const num = Number(raw);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function getOrgId(r: AuthedRequest): string | null {
+  return (r as any).auth?.orgId || (r as any).auth?.apiKey?.orgId || null;
+}
+
+function getApiKeyId(r: AuthedRequest): string | null {
+  return (r as any).auth?.apiKeyId || (r as any).auth?.apiKey?.id || null;
+}
+
+function classifyError(err: unknown): {
+  statusCode: number;
+  publicMessage: string;
+  code: string;
+  details?: string;
+  retryable: boolean;
+} {
+  const message =
+    err instanceof Error ? err.message : typeof err === "string" ? err : "Unknown error";
+
+  const lower = String(message).toLowerCase();
+
+  if (
+    lower.includes("openai_api_key") ||
+    lower.includes("api key") ||
+    lower.includes("missing api key") ||
+    lower.includes("unauthorized")
+  ) {
+    return {
+      statusCode: 503,
+      publicMessage: "Upstream AI provider is not configured correctly",
+      code: "UPSTREAM_CONFIG_ERROR",
+      details: message,
+      retryable: false
+    };
+  }
+
+  if (
+    lower.includes("quota") ||
+    lower.includes("rate limit") ||
+    lower.includes("too many requests") ||
+    lower.includes("compute time")
+  ) {
+    return {
+      statusCode: 429,
+      publicMessage: "AI provider is temporarily rate limited",
+      code: "UPSTREAM_RATE_LIMITED",
+      details: message,
+      retryable: true
+    };
+  }
+
+  if (
+    lower.includes("timeout") ||
+    lower.includes("etimedout") ||
+    lower.includes("econnreset") ||
+    lower.includes("service unavailable") ||
+    lower.includes("bad gateway")
+  ) {
+    return {
+      statusCode: 503,
+      publicMessage: "AI provider is temporarily unavailable",
+      code: "UPSTREAM_UNAVAILABLE",
+      details: message,
+      retryable: true
+    };
+  }
+
+  if (
+    lower.includes("zod") ||
+    lower.includes("validation") ||
+    lower.includes("invalid input")
+  ) {
+    return {
+      statusCode: 400,
+      publicMessage: "Invalid request payload",
+      code: "INVALID_REQUEST",
+      details: message,
+      retryable: false
+    };
+  }
+
+  return {
+    statusCode: 500,
+    publicMessage: "Internal task failure",
+    code: "INTERNAL_ERROR",
+    details: message,
+    retryable: false
+  };
+}
+
+/**
+ * 尽量不让数据库写入影响主链路
+ */
+async function persistRequestSafe(data: any) {
+  try {
+    await prisma.request.create({ data });
+  } catch (err) {
+    console.error("[OneAI][router] failed to persist request", err);
+  }
+}
+
+/**
+ * 1) 安全中间件
  */
 router.use(requireApiKey);
 router.use(
   rateLimitRedisTcp({
     windowMs: 60_000,
-    maxPerKeyPerWindow: 60,
-    maxPerIpPerWindow: 30
+    maxPerKeyPerWindow: 30,
+    maxPerIpPerWindow: 20
   })
 );
 
 /**
- * 2️⃣ 请求结构校验
+ * 2) 请求结构校验
  */
 const requestSchema = z.object({
-  type: z.string(),
-  input: z.any(),
+  type: z.string().min(1).max(120),
+  input: z.unknown(),
   options: z
     .object({
       templateVersion: z.number().int().positive().optional(),
-      maxAttempts: z.number().int().min(1).max(10).optional(),
+      maxAttempts: z.number().int().min(1).max(5).optional(),
       debug: z.boolean().optional()
     })
     .optional()
@@ -40,108 +194,53 @@ const requestSchema = z.object({
 
 router.post("/", async (req, res) => {
   const startTime = Date.now();
+  const r = req as AuthedRequest;
+
+  const apiKey = String(req.header("x-api-key") || "");
+  const ip = req.ip ?? "unknown";
+  const apiKeyHash = apiKey ? sha256(apiKey) : null;
 
   try {
-    const parsed = requestSchema.parse(req.body);
-    const r = req as AuthedRequest;
+    /**
+     * 3) 请求前兜底：如果上游 key 没配置，直接阻断
+     */
+    if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_API_KEY.trim()) {
+      console.error("[OneAI][router] OPENAI_API_KEY missing at request time");
 
-    // 3️⃣ debug 仅 admin 可用
+      return res.status(503).json({
+        success: false,
+        error: "OPENAI_API_KEY not configured",
+        code: "UPSTREAM_CONFIG_ERROR",
+        retryable: false
+      });
+    }
+
+    const parsed = requestSchema.parse(req.body);
+
+    /**
+     * 4) debug 仅 admin 可用
+     */
     if (parsed.options?.debug && !r.auth?.isAdmin) {
       return res.status(403).json({
         success: false,
-        error: "debug requires admin api key"
+        error: "debug requires admin api key",
+        code: "DEBUG_FORBIDDEN"
       });
     }
 
-    const result = await runTask(parsed.type, parsed.input, parsed.options);
+    const orgId = getOrgId(r);
+    const apiKeyId = getApiKeyId(r);
+    const inputHash = sha256(safeJsonStringify(parsed.input));
 
-    /**
-     * 4️⃣ 准备落库数据
-     */
-    const apiKey = String(req.header("x-api-key") || "");
-    const ip = req.ip ?? "unknown";
+    let result: any;
 
-    const apiKeyHash = crypto.createHash("sha256").update(apiKey).digest("hex");
-    const inputHash = crypto
-      .createHash("sha256")
-      .update(JSON.stringify(parsed.input))
-      .digest("hex");
+    try {
+      result = await runTask(parsed.type, parsed.input, parsed.options);
+    } catch (err) {
+      const classified = classifyError(err);
+      const latencyMs = Date.now() - startTime;
 
-    // ✅ FIX: 让 usage 聚合能按 orgId 查到数据
-    // requireApiKey 通常会把 apiKey 记录/权限挂到 r.auth 上
-    const orgId = (r as any).auth?.orgId || (r as any).auth?.apiKey?.orgId || null;
-    const apiKeyId = (r as any).auth?.apiKeyId || (r as any).auth?.apiKey?.id || null;
-
-    // ✅ FIX: 字段名兼容（你的 Request model 是 estimatedCostUsd）
-    const estimatedCostUsd =
-      (result as any)?.usage?.estimatedCostUsd ??
-      (result as any)?.usage?.estimatedCostUSD ??
-      null;
-
-    const latencyMs = Date.now() - startTime;
-
-    /**
-     * 5️⃣ 失败情况
-     */
-    if (!result.success) {
-      await prisma.request.create({
-        data: {
-          // ✅ FIX: 用 relation connect 写 org/apiKey，不直接写 orgId/apiKeyId
-          ...(orgId
-            ? {
-                org: {
-                  connect: { id: orgId }
-                }
-              }
-            : {}),
-          ...(apiKeyId
-            ? {
-                apiKey: {
-                  connect: { id: apiKeyId }
-                }
-              }
-            : {}),
-
-          task: parsed.type,
-
-          // ❌ Request model 不存在：apiKeyHash / ip / inputHash → 不写入
-          // 但你仍然可以把输入保存到 inputJson（schema 支持）
-          inputJson: parsed.input as any,
-
-          success: false,
-          attempts: result.attempts,
-
-          // schema: model 是必填 String，所以给兜底值
-          model: (result as any)?.usage?.model ?? "unknown",
-
-          // schema 这些是 Int/Float 且有 default，但这里传也没问题（用 0 兜底）
-          promptTokens: (result as any)?.usage?.promptTokens ?? 0,
-          completionTokens: (result as any)?.usage?.completionTokens ?? 0,
-          totalTokens: (result as any)?.usage?.totalTokens ?? 0,
-          estimatedCostUsd: Number(estimatedCostUsd ?? 0),
-
-          latencyMs,
-          error: JSON.stringify(result.error ?? "Unknown error")
-        } as any
-      });
-
-      return res.status(400).json({
-        success: false,
-        attempts: result.attempts,
-        error: "Failed to produce valid structured output",
-        details: result.error,
-        usage: result.usage ?? null,
-        usageTotal: result.usageTotal ?? null,
-        ...(parsed.options?.debug ? { usageSteps: result.usageSteps ?? null } : {})
-      });
-    }
-
-    /**
-     * 6️⃣ 成功落库
-     */
-    await prisma.request.create({
-      data: {
-        // ✅ FIX: 用 relation connect 写 org/apiKey，不直接写 orgId/apiKeyId
+      await persistRequestSafe({
         ...(orgId
           ? {
               org: {
@@ -156,46 +255,142 @@ router.post("/", async (req, res) => {
               }
             }
           : {}),
-
         task: parsed.type,
-
-        // ❌ Request model 不存在：apiKeyHash / ip / inputHash → 不写入
-        // ✅ 保留输入（可选）：你 schema 有 inputJson
         inputJson: parsed.input as any,
+        success: false,
+        attempts: 1,
+        model: "unknown",
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        estimatedCostUsd: 0,
+        latencyMs,
+        error: safeJsonStringify({
+          code: classified.code,
+          message: classified.details ?? classified.publicMessage,
+          apiKeyHash,
+          ip,
+          inputHash
+        })
+      } as any);
 
-        success: true,
-        attempts: result.attempts,
+      return res.status(classified.statusCode).json({
+        success: false,
+        error: classified.publicMessage,
+        code: classified.code,
+        retryable: classified.retryable,
+        details: classified.details
+      });
+    }
 
-        // schema: model 是必填 String
-        model: result.usage?.model ?? "unknown",
-
-        promptTokens: result.usage?.promptTokens ?? 0,
-        completionTokens: result.usage?.completionTokens ?? 0,
-        totalTokens: result.usage?.totalTokens ?? 0,
-
-        // ✅ FIX: 这里必须是 estimatedCostUsd（不是 estimatedCostUSD）
-        estimatedCostUsd: Number(estimatedCostUsd ?? 0),
-
-        latencyMs
-      } as any
-    });
+    const latencyMs = Date.now() - startTime;
+    const estimatedCostUsd = normalizeEstimatedCostUsd(result);
+    const usageModel = result?.usage?.model ?? result?.usageTotal?.model ?? "unknown";
 
     /**
-     * 7️⃣ 返回响应
+     * 5) 工作流执行成功，但结构化失败
+     */
+    if (!result?.success) {
+      await persistRequestSafe({
+        ...(orgId
+          ? {
+              org: {
+                connect: { id: orgId }
+              }
+            }
+          : {}),
+        ...(apiKeyId
+          ? {
+              apiKey: {
+                connect: { id: apiKeyId }
+              }
+            }
+          : {}),
+        task: parsed.type,
+        inputJson: parsed.input as any,
+        success: false,
+        attempts: Number(result?.attempts ?? 1),
+        model: usageModel,
+        promptTokens: Number(result?.usage?.promptTokens ?? 0),
+        completionTokens: Number(result?.usage?.completionTokens ?? 0),
+        totalTokens: Number(result?.usage?.totalTokens ?? 0),
+        estimatedCostUsd,
+        latencyMs,
+        error: safeJsonStringify({
+          error: result?.error ?? "Failed to produce valid structured output",
+          apiKeyHash,
+          ip,
+          inputHash
+        })
+      } as any);
+
+      return res.status(422).json({
+        success: false,
+        attempts: result?.attempts ?? 1,
+        error: "Failed to produce valid structured output",
+        code: "WORKFLOW_OUTPUT_INVALID",
+        details: result?.error ?? null,
+        usage: result?.usage ?? null,
+        usageTotal: result?.usageTotal ?? null,
+        ...(parsed.options?.debug ? { usageSteps: result?.usageSteps ?? null } : {})
+      });
+    }
+
+    /**
+     * 6) 成功落库
+     */
+    await persistRequestSafe({
+      ...(orgId
+        ? {
+            org: {
+              connect: { id: orgId }
+            }
+          }
+        : {}),
+      ...(apiKeyId
+        ? {
+            apiKey: {
+              connect: { id: apiKeyId }
+            }
+          }
+        : {}),
+      task: parsed.type,
+      inputJson: parsed.input as any,
+      success: true,
+      attempts: Number(result?.attempts ?? 1),
+      model: usageModel,
+      promptTokens: Number(result?.usage?.promptTokens ?? 0),
+      completionTokens: Number(result?.usage?.completionTokens ?? 0),
+      totalTokens: Number(result?.usage?.totalTokens ?? 0),
+      estimatedCostUsd,
+      latencyMs
+    } as any);
+
+    /**
+     * 7) 返回响应
      */
     return res.json({
       success: true,
-      attempts: result.attempts,
-      usage: result.usage ?? null,
-      usageTotal: result.usageTotal ?? null,
-      ...(parsed.options?.debug ? { usageSteps: result.usageSteps ?? null } : {}),
-      data: result.data,
+      attempts: result?.attempts ?? 1,
+      usage: result?.usage ?? null,
+      usageTotal: result?.usageTotal ?? null,
+      ...(parsed.options?.debug ? { usageSteps: result?.usageSteps ?? null } : {}),
+      data: result?.data ?? null,
       latencyMs
     });
-  } catch (err: any) {
-    return res.status(400).json({
+  } catch (err) {
+    const classified = classifyError(err);
+    const latencyMs = Date.now() - startTime;
+
+    console.error("[OneAI][router] request failed", err);
+
+    return res.status(classified.statusCode).json({
       success: false,
-      error: err.message
+      error: classified.publicMessage,
+      code: classified.code,
+      retryable: classified.retryable,
+      details: classified.details,
+      latencyMs
     });
   }
 });
