@@ -26,15 +26,15 @@ export function checkMarketAnalysisConstraints(data: any) {
     errors.push("triggerZone must be an array");
   }
 
-  if (!Array.isArray(data?.risks)) {
+  if (data?.risks !== undefined && !Array.isArray(data.risks)) {
     errors.push("risks must be an array");
   }
 
-  if (!Array.isArray(data?.insights)) {
+  if (data?.insights !== undefined && !Array.isArray(data.insights)) {
     errors.push("insights must be an array");
   }
 
-  for (const i of data.insights || []) {
+  for (const i of data?.insights || []) {
     if (!i.title || i.title.length < 3) {
       errors.push("insight title too short");
     }

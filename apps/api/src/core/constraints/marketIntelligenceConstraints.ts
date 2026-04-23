@@ -1,74 +1,41 @@
 export function checkMarketIntelligenceConstraints(data: any) {
   const errors: string[] = [];
 
-  if (!data?.marketRegime) errors.push("marketRegime required");
-  if (!data?.tradability) errors.push("tradability required");
-  if (!data?.observations) errors.push("observations required");
-  if (!data?.interpretation) errors.push("interpretation required");
-  if (!data?.outlook) errors.push("outlook required");
+  if (!data || typeof data !== "object") {
+    errors.push("data must be an object");
+    return { ok: false, errors };
+  }
 
-  if (
-    typeof data?.marketRegime?.confidence !== "number" ||
-    data.marketRegime.confidence < 0 ||
-    data.marketRegime.confidence > 1
-  ) {
-    errors.push("marketRegime.confidence must be 0-1");
+  if (!data.regime) {
+    errors.push("regime required");
+  }
+
+  if (!data.bias) {
+    errors.push("bias required");
+  }
+
+  if (typeof data.confidence !== "number" || Number.isNaN(data.confidence)) {
+    errors.push("confidence must be a number");
+  } else if (data.confidence < 0 || data.confidence > 100) {
+    errors.push("confidence must be 0-100");
   }
 
   if (
-    typeof data?.tradability?.confidence !== "number" ||
-    data.tradability.confidence < 0 ||
-    data.tradability.confidence > 1
+    data.volatility !== undefined &&
+    !["low", "normal", "high"].includes(data.volatility)
   ) {
-    errors.push("tradability.confidence must be 0-1");
+    errors.push("volatility must be low | normal | high");
   }
 
   if (
-    typeof data?.outlook?.confidence !== "number" ||
-    data.outlook.confidence < 0 ||
-    data.outlook.confidence > 1
+    data.liquidity !== undefined &&
+    !["thin", "normal", "deep"].includes(data.liquidity)
   ) {
-    errors.push("outlook.confidence must be 0-1");
+    errors.push("liquidity must be thin | normal | deep");
   }
 
-  if (!Array.isArray(data?.sectorAnalysis)) {
-    errors.push("sectorAnalysis must be an array");
-  }
-
- if (!Array.isArray(data?.keyDrivers)) {
-  errors.push("keyDrivers must be an array");
-}
-
-if (!Array.isArray(data?.risks)) {
-  errors.push("risks must be an array");
-}
-
-if (!Array.isArray(data?.insights)) {
-  errors.push("insights must be an array");
-}
-
-  if (!Array.isArray(data?.risks) || data.risks.length === 0) {
-    errors.push("risks required");
-  }
-
-  if (!Array.isArray(data?.insights) || data.insights.length === 0) {
-    errors.push("insights required");
-  }
-
-  for (const i of data.insights || []) {
-    if (!i.title || i.title.length < 4) {
-      errors.push("insight title too short");
-    }
-
-    if (!i.body || i.body.length < 20) {
-      errors.push("insight body too short");
-    }
-
-    if (typeof i.confidence !== "number") {
-      errors.push("insight confidence must be number");
-    } else if (i.confidence < 0 || i.confidence > 1) {
-      errors.push("insight confidence must be 0-1");
-    }
+  if (!data.summary || typeof data.summary !== "string" || data.summary.length < 5) {
+    errors.push("summary required");
   }
 
   return { ok: errors.length === 0, errors };
