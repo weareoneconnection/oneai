@@ -229,22 +229,29 @@ export default function HomePage() {
               </div>
 
               <div className="mt-10 flex flex-col flex-wrap gap-3 sm:flex-row">
-                <Link
-                  href="https://t.me/WAOCOneAIBot"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center justify-center rounded-full bg-black px-6 py-4 font-extrabold text-white shadow-lg transition hover:bg-neutral-900 sm:px-8"
-                >
-                  Open OneAI Bot →
-                </Link>
+  <Link
+    href="https://t.me/WAOCOneAIBot"
+    target="_blank"
+    rel="noreferrer"
+    className="inline-flex items-center justify-center rounded-full bg-black px-6 py-4 font-extrabold text-white shadow-lg transition hover:bg-neutral-900 sm:px-8"
+  >
+    Open OneAI Bot →
+  </Link>
 
-                <Link
-                  href="/studio-lite"
-                  className="inline-flex items-center justify-center rounded-full border border-black/15 bg-white px-6 py-4 font-extrabold text-black transition hover:bg-black/[0.04] sm:px-8"
-                >
-                  Launch AI Growth OS
-                </Link>
-              </div>
+  <Link
+    href="https://oneaitradingbot.vercel.app/"
+    className="inline-flex items-center justify-center rounded-full border border-black/15 bg-white px-6 py-4 font-extrabold text-black transition hover:bg-black/[0.04] sm:px-8"
+  >
+    Open OneAI Trading OS →
+  </Link>
+
+  <Link
+    href="/studio-lite"
+    className="inline-flex items-center justify-center rounded-full border border-black/15 bg-white px-6 py-4 font-extrabold text-black transition hover:bg-black/[0.04] sm:px-8"
+  >
+    Launch AI Growth OS
+  </Link>
+</div>
 
               <div className="mt-4 flex flex-col flex-wrap gap-3 sm:flex-row sm:items-center">
                 <Link
@@ -272,9 +279,10 @@ export default function HomePage() {
               </div>
 
               <div className="mt-5 max-w-2xl text-sm text-black/50">
-                WAOC is the network layer. OneAI Agent OS is the operating system.
-                Studio Lite is the AI Growth OS for launch systems and campaign execution.
-              </div>
+  WAOC is the network layer. OneAI Agent OS is the operating system.
+  OneAI Trading OS is the market execution interface.
+  Studio Lite is the AI Growth OS for launch systems and campaign execution.
+</div>
             </div>
 
             {/* Hero visual */}
@@ -870,7 +878,7 @@ export default function HomePage() {
           </div>
 
           <div className="mt-4 text-xs text-black/40">
-            On-chain verification powered by XLayer.
+            On-chain verification powered by WAOC https://www.weareoneconnection.org
           </div>
         </footer>
       </div>
