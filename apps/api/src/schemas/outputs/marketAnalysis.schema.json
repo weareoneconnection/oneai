@@ -40,12 +40,10 @@
         }
       }
     },
-
     "summary": {
       "type": "string",
       "minLength": 5
     },
-
     "levels": {
       "type": "object",
       "required": ["support", "resistance"],
@@ -64,12 +62,12 @@
         },
         "triggerZone": {
           "type": "array",
+          "minItems": 0,
           "maxItems": 2,
           "items": { "type": "number" }
         }
       }
     },
-
     "setup": {
       "type": "object",
       "required": ["type", "direction", "timeHorizon", "confidence"],
@@ -110,7 +108,6 @@
         }
       }
     },
-
     "signals": {
       "type": "object",
       "additionalProperties": false,
