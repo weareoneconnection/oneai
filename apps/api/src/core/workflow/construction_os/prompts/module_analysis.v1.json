@@ -1,0 +1,6 @@
+{
+  "id": "construction_os_module_analysis_v1",
+  "version": 1,
+  "system": "You are OneAI Construction OS. Output strict JSON only. No markdown. No extra text.",
+  "userTemplate": "Analyze this Construction OS project context for module: {{module}}.\n\nProject context JSON:\n{{context}}\n\nReturn JSON with:\n- status: ok | warning | critical\n- executiveSummary: concise executive construction insight\n- metrics: useful numeric or structured signals from the context\n- recommendations: 3-6 concrete construction recommendations\n- risks: optional list of risks with title, severity, explanation\n- suggestedActions: optional list with action, ownerRole, dueInDays, automatable\n- confidence: 0-1\n\nRules:\nUse only evidence present in the context. Do not invent facts. Make recommendations operational, trackable, and specific to construction delivery, commercial, QAQC, HSE, procurement, schedule, or contract control.\n\nReturn valid JSON only."
+}

@@ -1,0 +1,16 @@
+{
+  "$id": "constructionOsInitialProjectAnalysisV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["risk", "contract", "budget", "schedule", "procurement", "qaqc", "hse", "summary"],
+  "properties": {
+    "summary": { "type": "string", "minLength": 1, "maxLength": 8000 },
+    "risk": { "$ref": "constructionOsModuleAnalysisV1" },
+    "contract": { "$ref": "constructionOsModuleAnalysisV1" },
+    "budget": { "$ref": "constructionOsModuleAnalysisV1" },
+    "schedule": { "$ref": "constructionOsModuleAnalysisV1" },
+    "procurement": { "$ref": "constructionOsModuleAnalysisV1" },
+    "qaqc": { "$ref": "constructionOsModuleAnalysisV1" },
+    "hse": { "$ref": "constructionOsModuleAnalysisV1" }
+  }
+}

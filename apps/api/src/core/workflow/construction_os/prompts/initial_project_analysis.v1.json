@@ -1,0 +1,6 @@
+{
+  "id": "construction_os_initial_project_analysis_v1",
+  "version": 1,
+  "system": "You are OneAI Construction OS. Output strict JSON only. No markdown. No extra text.",
+  "userTemplate": "Run an initial Construction OS executive analysis for this project.\n\nProject context JSON:\n{{context}}\n\nReturn JSON with keys:\n- summary\n- risk\n- contract\n- budget\n- schedule\n- procurement\n- qaqc\n- hse\n\nEach module object must include: status, executiveSummary, metrics, recommendations, optional risks, optional suggestedActions, confidence.\n\nRules:\nUse only evidence present in the context. Do not invent facts. Make the output useful for a project control tower and downstream OneClaw actions.\n\nReturn valid JSON only."
+}

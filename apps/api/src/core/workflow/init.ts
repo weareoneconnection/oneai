@@ -34,6 +34,7 @@ import "./xWorkflow.js";
 import "./webWorkflow.js";
 
 import "./oneclaw_execute.workflow.js";
+import "./construction_os/index.js";
 
 import "./agentPlanWorkflow.js";
 // 🧠 One Field Intelligence（核心）
@@ -44,4 +45,3 @@ import "./oneMirrorWorkflow.js";
 import "./marketIntelligenceWorkflow.js";
 import "./marketAnalysisWorkflow.js";
 import "./marketDecisionWorkflow.js";
-
