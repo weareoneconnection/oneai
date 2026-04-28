@@ -283,7 +283,16 @@ function fallbackOneclawTask(input: ConstructionWorkflowInput, reply: string): O
 
 function normalizeExecutableOneclawTask(input: ConstructionWorkflowInput, data: unknown): OneClawTaskData {
   const normalized = normalizeOneclawTask(data);
-  const text = String(input.message ?? "").toLowerCase();
+  const request = extractEmbeddedConstructionRequest(input);
+  const evidence = Array.isArray(request.evidence) && isRecord(request.evidence[0])
+    ? request.evidence[0] as JsonRecord
+    : {};
+  const text = [
+    request.requestedAction,
+    evidence.type,
+    evidence.source,
+    evidence.payload,
+  ].map((item) => typeof item === "string" ? item : JSON.stringify(item ?? "")).join(" ").toLowerCase();
   const explicitCancel =
     text.includes("do not execute") ||
     text.includes("don't execute") ||
