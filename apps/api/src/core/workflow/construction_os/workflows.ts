@@ -198,6 +198,104 @@ function normalizeOneclawTask(data: unknown): OneClawTaskData {
   };
 }
 
+function extractEmbeddedConstructionRequest(input: ConstructionWorkflowInput) {
+  const message = String(input.message ?? "");
+  const start = message.indexOf("{");
+  const end = message.lastIndexOf("}");
+  if (start < 0 || end <= start) return {};
+  try {
+    const parsed = JSON.parse(message.slice(start, end + 1));
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function chooseFallbackConstructionAction(request: JsonRecord) {
+  const requestedAction = String(request.requestedAction ?? "").toLowerCase();
+  const evidence = Array.isArray(request.evidence) && isRecord(request.evidence[0])
+    ? request.evidence[0] as JsonRecord
+    : {};
+  const type = String(evidence.type ?? request.type ?? "").toLowerCase();
+  const text = `${requestedAction} ${type}`;
+
+  if (text.includes("approval")) return "construction.approval.request";
+  if (text.includes("procurement") || text.includes("rfq") || text.includes("vendor")) {
+    return "construction.procurement.followup";
+  }
+  if (text.includes("schedule") || text.includes("delay") || text.includes("recovery")) {
+    return "construction.schedule.recovery_plan";
+  }
+  if (text.includes("hse") || text.includes("safety")) return "construction.hse.corrective_action";
+  if (text.includes("qaqc") || text.includes("quality") || text.includes("ncr")) {
+    return "construction.qaqc.ncr.create";
+  }
+  if (text.includes("rfi")) return "construction.rfi.create";
+  if (text.includes("change order") || text.includes("variation")) {
+    return "construction.change_order.prepare";
+  }
+  if (text.includes("claim") || text.includes("contract")) return "construction.contract.claim_prepare";
+  if (text.includes("budget") || text.includes("cost")) return "construction.budget.variance_review";
+  if (text.includes("notify") || text.includes("message")) return "message.notify";
+  return "construction.task.create";
+}
+
+function fallbackOneclawTask(input: ConstructionWorkflowInput, reply: string): OneClawTaskData {
+  const request = extractEmbeddedConstructionRequest(input);
+  const evidence = Array.isArray(request.evidence) && isRecord(request.evidence[0])
+    ? request.evidence[0] as JsonRecord
+    : {};
+  const requestedAction = String(request.requestedAction ?? evidence.type ?? "Construction OS action").trim();
+  const projectId = String(request.projectId ?? "").trim();
+  const organizationId = request.organizationId ?? null;
+  const action = chooseFallbackConstructionAction(request);
+
+  return {
+    reply: reply || "Planned a safe Construction OS OneClaw task.",
+    shouldExecute: true,
+    oneclawTask: {
+      taskName: `construction_${projectId || "project"}_${Date.now()}`,
+      steps: [
+        {
+          id: "step_1",
+          action,
+          input: {
+            projectId,
+            organizationId,
+            actorUserId: evidence.actorUserId ?? null,
+            title: requestedAction.slice(0, 120) || "Construction OS action",
+            note: requestedAction || "Execute Construction OS action.",
+            description: requestedAction || "Execute Construction OS action.",
+            priority: evidence.priority ?? "medium",
+            source: "oneai",
+            payload: {
+              requestedAction,
+              evidence,
+              fallbackPlanner: true,
+            },
+          },
+          dependsOn: [],
+        },
+      ],
+    },
+  };
+}
+
+function normalizeExecutableOneclawTask(input: ConstructionWorkflowInput, data: unknown): OneClawTaskData {
+  const normalized = normalizeOneclawTask(data);
+  const text = String(input.message ?? "").toLowerCase();
+  const explicitCancel =
+    text.includes("do not execute") ||
+    text.includes("don't execute") ||
+    text.includes("cancel") ||
+    text.includes("不要执行") ||
+    text.includes("取消执行");
+
+  if (normalized.shouldExecute && normalized.oneclawTask) return normalized;
+  if (explicitCancel) return normalized;
+  return fallbackOneclawTask(input, normalized.reply);
+}
+
 function checkModuleAnalysis(data: ModuleAnalysisData) {
   const errors: string[] = [];
   if (!data.executiveSummary.trim()) errors.push("executiveSummary is required.");
@@ -292,7 +390,7 @@ function oneclawWorkflow(task: string, taskType: string): WorkflowDefinition<Ctx
       generateLLMStep<ConstructionWorkflowInput, OneClawTaskData>(),
       parseJsonStep<ConstructionWorkflowInput, OneClawTaskData>(),
       async (ctx) => {
-        ctx.data = normalizeOneclawTask(ctx.data);
+        ctx.data = normalizeExecutableOneclawTask(ctx.input, ctx.data);
         return { ok: true };
       },
       validateSchemaStep<ConstructionWorkflowInput, OneClawTaskData>(
@@ -305,7 +403,7 @@ function oneclawWorkflow(task: string, taskType: string): WorkflowDefinition<Ctx
       }),
       parseJsonStep<ConstructionWorkflowInput, OneClawTaskData>(),
       async (ctx) => {
-        ctx.data = normalizeOneclawTask(ctx.data);
+        ctx.data = normalizeExecutableOneclawTask(ctx.input, ctx.data);
         return { ok: true };
       },
       validateSchemaStep<ConstructionWorkflowInput, OneClawTaskData>(
